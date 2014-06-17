@@ -9,8 +9,6 @@ import Graphics.Wayland.Internal.Protocol
 import Graphics.Wayland.Internal.Scanner
 import Foreign.C.Types
 
-#include <wayland-server.h>
-#include <wayland-client.h>
 
 $(runIO $ generateTypes <$> readProtocol)
 $((runIO $ readProtocol) >>= generateClientMethods)
