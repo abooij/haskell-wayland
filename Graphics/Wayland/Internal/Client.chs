@@ -11,6 +11,8 @@ import Foreign.C.Types
 import Foreign.C.String
 import System.Posix.Types
 
+import Graphics.Wayland.Internal.SpliceProtocol
+
 #include <wayland-client.h>
 
 {#context prefix="wl"#}
@@ -20,13 +22,13 @@ import System.Posix.Types
 
 -- In the case of the Client side, these are all just abstract pointer objects.
 
--- | struct wl_display pointer
-{#pointer * display as Display newtype#}
+-- | struct wl_display pointer (nocode since its interface is generated in SpliceProtocol)
+{#pointer * display as Display nocode#}
 
--- | struct wl_proxy pointer
+-- | struct wl_proxy pointer (generate type since this is not an interface)
 {#pointer * proxy as Proxy newtype#}
 
--- | struct wl_event_queue pointer
+-- | struct wl_event_queue pointer (ditto)
 {#pointer * event_queue as EventQueue newtype#}
 
 

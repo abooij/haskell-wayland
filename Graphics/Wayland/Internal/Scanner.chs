@@ -65,7 +65,7 @@ genMessageType iface msg =
                     else [t|IO ()|]
 
   in
-    foldr1 (\sometype -> \curtype -> [t|$sometype -> $curtype|]) $ argTypeToType (ObjectArg (interfaceName iface)) : (map (argTypeToType.snd3) fixedArgs) ++ [returnType]
+    foldr1 (\sometype curtype -> [t|$sometype -> $curtype|]) $ argTypeToType (ObjectArg (interfaceName iface)) : (map (argTypeToType.snd3) fixedArgs) ++ [returnType]
 
 argTypeToType :: ArgumentType -> TypeQ
 argTypeToType IntArg = [t| {#type int32_t#} |]
@@ -79,7 +79,7 @@ argTypeToType FdArg = [t| {#type int32_t#} |]
 
 -- | get the wayland-style name for some message
 getMessageCName :: InterfaceName -> String -> String
-getMessageCName iface msg = iface ++ "_" ++ msg
+getMessageCName iface msg = "x_"++iface ++ "_" ++ msg
 
 -- | takes a wayland-style message name and interface context and generates a pretty Haskell-style function name
 messageHaskName :: InterfaceName -> String -> String
