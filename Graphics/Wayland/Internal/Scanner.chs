@@ -28,7 +28,7 @@ generateTypes ps = map generateInterface (specInterfaces ps) where
   generateInterface iface =
     let qname = mkName $ prettyInterfaceName $ interfaceName iface
     in
-      (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT qname))]) [])
+      (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT qname))]) [mkName "Show"])
 
 generateClientMethods :: ProtocolSpec -> Q [Dec]
 generateClientMethods ps = sequence $ concat $ (map generateEvents (specInterfaces ps)) ++ (map generateRequests (specInterfaces ps)) where
@@ -62,10 +62,10 @@ genMessageType iface msg =
                       _                  -> True
     returnType = if numNewIds==1
                     then argTypeToType $ snd3 $ head $ filter (not.notNewIds) $ messageArguments msg
-                    else [t|IO ()|]
+                    else [t|()|]
 
   in
-    foldr1 (\sometype curtype -> [t|$sometype -> $curtype|]) $ argTypeToType (ObjectArg (interfaceName iface)) : (map (argTypeToType.snd3) fixedArgs) ++ [returnType]
+    foldl (\addtype curtype -> [t|$curtype -> $addtype|]) [t|IO $(returnType)|] $ argTypeToType (ObjectArg (interfaceName iface)) : (map (argTypeToType.snd3) fixedArgs)
 
 argTypeToType :: ArgumentType -> TypeQ
 argTypeToType IntArg = [t| {#type int32_t#} |]

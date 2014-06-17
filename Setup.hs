@@ -45,10 +45,7 @@ main = defaultMainWithHooks
                               "\t"++(if returnType=="void" then "" else "return ")++name++"("++argNames++");\n"++
                               "}\n") newFuncs
 
-          interfaces = filter (isInfixOf "extern const struct wl_interface") (lines c_preprocessed)
-          newInterfaces = map (drop (length "extern ")) interfaces
-
-          newCCode = inputFile ++ unlines newInterfaces ++ unlines newCFuncs
+          newCCode = inputFile ++ unlines newCFuncs
 
       createDirectoryIfMissing True outdir
       writeFile outfile newCCode
