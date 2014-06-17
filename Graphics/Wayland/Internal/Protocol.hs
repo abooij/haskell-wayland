@@ -15,19 +15,16 @@ import System.Process
 import System.IO
 import Language.Haskell.TH
 
-#include <wayland-server.h>
-#include <wayland-util.h>
-
-{#context prefix="wl"#}
-
 --         const char *name;
 --         int version;
 --         int method_count;
 --         const struct wl_message *methods;
 --         int event_count;
 --         const struct wl_message *events;
+-- | wayland-style interface name (e.g. wl_display)
+type InterfaceName = String
 data Interface = Interface {
-  interfaceName :: String,
+  interfaceName :: InterfaceName,
   interfaceVersion :: Int,
   interfaceMethods :: [Message], -- ^ aka requests
   interfaceEvents :: [Message],
@@ -50,7 +47,7 @@ data WLEnum = WLEnum {
 --         int32_t h; /**< file descriptor */
 -- };
 
-type InterfaceName = String
+-- | wayland wire protocol argument type. we can't deal with untyped object/new-id arguments.
 data ArgumentType = IntArg | UIntArg | FixedArg | StringArg | ObjectArg InterfaceName | NewIdArg InterfaceName | ArrayArg | FdArg deriving (Show)
 argConversionTable :: [(String, ArgumentType)] -- for all easy argument types
 argConversionTable = [
@@ -76,6 +73,7 @@ data ProtocolSpec = ProtocolSpec {
   specInterfaces :: [Interface]
   } deriving (Show)
 
+-- | locate wayland.xml on disk and parse it
 readProtocol :: IO ProtocolSpec
 readProtocol = do
   datadir <- figureOutWaylandDataDir
@@ -127,40 +125,11 @@ readProtocol = do
                                        read $ fromJust $ findAttr value entryelt :: Int)
   return $ ProtocolSpec interfaces
 
-generateTypes :: ProtocolSpec -> [Dec]
-generateTypes ps = map generateInterface (specInterfaces ps) where
-  generateInterface iface =
-    let qname = mkName $ prettyInterfaceName $ interfaceName iface
-    in
-      (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT qname))]) [])
-
--- generateClientMethods :: ProtocolSpec -> [Dec]
-
--- generateServerMethods :: ProtocolSpec -> [Dec]
-
-
--- | convert some_string to someString
-toCamel :: String -> String
-toCamel (a:'_':c:d) | isAlpha a, isAlpha c = a : (toUpper c) : (toCamel d)
-toCamel (a:b) = a : toCamel b
-toCamel x = x
-
--- | if the second argument starts with the first argument, strip that start
-removeInitial :: Eq a => [a] -> [a] -> [a]
-removeInitial remove input = if isPrefixOf remove input
-                                     then drop (length remove) input
-                                     else input
-capitalize :: String -> String
-capitalize x = toUpper (head x) : tail x
-
-prettyInterfaceName :: String -> String
-prettyInterfaceName = capitalize . toCamel . removeInitial "wl_"
-
-prettyMessageName :: String -> String -> String
-prettyMessageName ifacename msgname = toCamel $ ((removeInitial "wl_" ifacename) ++ "_" ++ msgname)
-
 figureOutWaylandDataDir :: IO String
 figureOutWaylandDataDir =
   head <$> lines <$> readProcess "pkg-config" ["wayland-server", "--variable=pkgdatadir"] []
 
 protocolFile = "wayland.xml"
+
+capitalize :: String -> String
+capitalize x = toUpper (head x) : tail x
