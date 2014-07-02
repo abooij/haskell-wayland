@@ -12,4 +12,6 @@ import Graphics.Wayland.Internal.Scanner
 
 
 $(runIO $ generateTypes <$> readProtocol)
+$(runIO $ generateEnums <$> readProtocol)
 $((runIO $ readProtocol) >>= generateClientMethods)
+$((runIO $ readProtocol) >>= generateServerMethods)

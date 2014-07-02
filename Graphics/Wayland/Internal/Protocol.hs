@@ -125,6 +125,7 @@ readProtocol = do
                                        read $ fromJust $ findAttr value entryelt :: Int)
   return $ ProtocolSpec interfaces
 
+-- TODO move this into some pretty Setup.hs thing
 figureOutWaylandDataDir :: IO String
 figureOutWaylandDataDir =
   head <$> lines <$> readProcess "pkg-config" ["wayland-server", "--variable=pkgdatadir"] []
@@ -133,3 +134,6 @@ protocolFile = "wayland.xml"
 
 capitalize :: String -> String
 capitalize x = toUpper (head x) : tail x
+
+decapitalize :: String -> String
+decapitalize x = toLower (head x) : tail x

@@ -30,21 +30,45 @@ generateTypes ps = map generateInterface (specInterfaces ps) where
     in
       (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT qname))]) [mkName "Show"])
 
-generateClientMethods :: ProtocolSpec -> Q [Dec]
-generateClientMethods ps = sequence $ concat $ (map generateEvents (specInterfaces ps)) ++ (map generateRequests (specInterfaces ps)) where
-  generateEvents iface = [] -- callbacks...
+makeEnumHaskName :: Interface -> WLEnum -> String
+makeEnumHaskName iface wlenum = (prettyInterfaceName $ interfaceName iface) ++ (prettyInterfaceName $ enumName wlenum)
 
-  generateRequests iface = concat $ map generateRequest $ interfaceMethods iface where
+generateEnums :: ProtocolSpec -> [Dec]
+generateEnums ps = concat $ map eachGenerateEnums (specInterfaces ps) where
+  eachGenerateEnums :: Interface -> [Dec]
+  eachGenerateEnums iface = concat $ map generateEnum $ interfaceEnums iface where
+    generateEnum :: WLEnum -> [Dec]
+    generateEnum wlenum =
+      let qname = mkName $ makeEnumHaskName iface wlenum
+      in
+        NewtypeD [] qname [] (NormalC qname [(NotStrict, (ConT ''Int))]) [mkName "Show", mkName "Eq"]
+        :
+        map (\(entry, val) -> (ValD (VarP $ mkName $ decapitalize $ makeEnumHaskName iface wlenum ++ prettyInterfaceName entry) (NormalB $ AppE (ConE qname) $ LitE $ IntegerL $ toInteger val) [])) (enumEntries wlenum)
+
+data ServerClient = Server | Client  deriving (Eq)
+-- generate FFI for a certain side of the API
+generateMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
+generateMethods ps sc = sequence $ concat $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+  generateRequests iface = concat $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
     generateRequest msg =
       let iname = interfaceName iface
           mname = messageName msg
+          cname = if sc == Server
+                     then getEventCName iname mname
+                     else getRequestCName iname mname
+          hname = if sc == Server
+                     then mkName $ messageHaskName $ getEventCName iname mname
+                     else mkName $ messageHaskName $ getRequestCName iname mname
       in [
-        -- This is the ccal declaration
-        forImpD cCall unsafe (getMessageCName iname mname) (mkName $ (messageHaskName iname mname) ++ "'") (genMessageType iface msg)
+        forImpD cCall unsafe cname hname (genMessageType iface msg)
+        ]
 
-      ]
 
--- generateServerMethods :: ProtocolSpec -> [Dec]
+generateClientMethods :: ProtocolSpec -> Q [Dec]
+generateClientMethods ps = generateMethods ps Client
+
+generateServerMethods :: ProtocolSpec -> Q [Dec]
+generateServerMethods ps = generateMethods ps Server
 
 
 genMessageType :: Interface -> Message -> TypeQ
@@ -77,13 +101,17 @@ argTypeToType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
 argTypeToType ArrayArg = undefined
 argTypeToType FdArg = [t| {#type int32_t#} |]
 
--- | get the wayland-style name for some message
-getMessageCName :: InterfaceName -> String -> String
-getMessageCName iface msg = "x_"++iface ++ "_" ++ msg
+-- | get the wayland-style name for some request message
+getRequestCName :: InterfaceName -> String -> String
+getRequestCName iface msg = "x_"++iface ++ "_" ++ msg
+
+-- | get the wayland-style name for some event message method (ie server-side)
+getEventCName :: InterfaceName -> String -> String
+getEventCName iface msg = "x_"++iface++"_send_"++msg
 
 -- | takes a wayland-style message name and interface context and generates a pretty Haskell-style function name
-messageHaskName :: InterfaceName -> String -> String
-messageHaskName iface msg = toCamel $ removeInitial "wl_" $ getMessageCName iface msg
+messageHaskName :: String -> String
+messageHaskName = toCamel . removeInitial "wl_"
 
 -- | takes a wayland-style interface name and generates a TH name for types
 interfaceTypeName :: InterfaceName -> Name
