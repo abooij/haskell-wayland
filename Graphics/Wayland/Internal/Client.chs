@@ -1,5 +1,5 @@
 module Graphics.Wayland.Internal.Client (
-  Display, Proxy, EventQueue,
+  Proxy, EventQueue,
 
   eventQueueDestroy,
 
@@ -25,7 +25,7 @@ import Graphics.Wayland.Internal.SpliceTypes
 
 -- In the case of the Client side, these are all just abstract pointer objects.
 
--- | struct wl_display pointer (nocode since its interface is generated in SpliceProtocol)
+-- struct wl_display pointer (nocode since its interface is generated in SpliceProtocol)
 {#pointer * display as Display nocode#}
 
 -- | struct wl_proxy pointer (generate type since this is not an interface)
