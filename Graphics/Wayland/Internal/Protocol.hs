@@ -1,19 +1,10 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Graphics.Wayland.Internal.Protocol where
 
 import Data.Functor
 import Data.Maybe
 import Data.Char
-import Data.List
-import Foreign
-import Foreign.C.Types
-import Foreign.C.String
-import System.IO.Unsafe
 import Text.XML.Light
 import System.Process
-import System.IO
-import Language.Haskell.TH
 
 --         const char *name;
 --         int version;
@@ -107,7 +98,7 @@ readProtocol = do
             parseMessage msgelt = do
               let name = fromJust $ findAttr namexml msgelt
               arguments <- sequence $ map parseArgument $ findChildren arg msgelt
-              return $ Message {messageName = name, messageArguments = arguments} where
+              return $ Message {messageName = name, messageArguments = (fromJust $ findAttr namexml elt, ObjectArg $ fromJust $ findAttr namexml elt, False) : arguments} where
                 parseArgument argelt = do
                   let name = fromJust $ findAttr namexml argelt
 		  let argtypecode = fromJust $ findAttr typexml argelt

@@ -3,5 +3,5 @@ import Graphics.Wayland
 main = do
   a <- displayConnect
   print a
-  b <- xWlDisplaySync a
+  b <- displaySync a
   print b

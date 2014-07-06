@@ -12,6 +12,9 @@ import Foreign.C.String
 import System.Posix.Types
 
 import Graphics.Wayland.Internal.SpliceProtocol
+import Graphics.Wayland.Internal.SpliceClient
+import Graphics.Wayland.Internal.SpliceTypes
+
 
 #include <wayland-client.h>
 

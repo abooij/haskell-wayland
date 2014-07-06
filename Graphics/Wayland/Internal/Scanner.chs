@@ -3,9 +3,11 @@
 module Graphics.Wayland.Internal.Scanner where
 
 import Data.Functor
+import Control.Monad (liftM)
 import Data.Maybe
 import Data.Char
 import Data.List
+import Data.Word
 import Foreign
 import Foreign.C.Types
 import Foreign.C.String
@@ -46,10 +48,12 @@ generateEnums ps = concat $ map eachGenerateEnums (specInterfaces ps) where
         map (\(entry, val) -> (ValD (VarP $ mkName $ decapitalize $ makeEnumHaskName iface wlenum ++ prettyInterfaceName entry) (NormalB $ AppE (ConE qname) $ LitE $ IntegerL $ toInteger val) [])) (enumEntries wlenum)
 
 data ServerClient = Server | Client  deriving (Eq)
--- generate FFI for a certain side of the API
-generateMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateMethods ps sc = sequence $ concat $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
-  generateRequests iface = concat $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
+-- | generate FFI for a certain side of the API
+generateInternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
+generateInternalMethods ps sc = liftM concat $ sequence $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+  generateRequests :: Interface -> Q [Dec]
+  generateRequests iface = sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
+    generateRequest :: Message -> Q Dec
     generateRequest msg =
       let iname = interfaceName iface
           mname = messageName msg
@@ -59,20 +63,63 @@ generateMethods ps sc = sequence $ concat $ map generateRequests $ filter (\ifac
           hname = if sc == Server
                      then mkName $ messageHaskName $ getEventCName iname mname
                      else mkName $ messageHaskName $ getRequestCName iname mname
-      in [
-        forImpD cCall unsafe cname hname (genMessageType iface msg)
-        ]
+          pname = if sc == Server
+                     then mkName $ getEventHaskName iname mname
+                     else mkName $ getRequestHaskName iname mname
+      in forImpD cCall unsafe cname hname (genMessageType msg)
+
+generateExternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
+generateExternalMethods ps sc = liftM concat $ sequence $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+  generateRequests :: Interface -> Q [Dec]
+  generateRequests iface = liftM concat $ sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
+    generateRequest :: Message -> Q [Dec]
+    generateRequest msg =
+      let iname = interfaceName iface
+          mname = messageName msg
+          cname = if sc == Server
+                     then getEventCName iname mname
+                     else getRequestCName iname mname
+          hname = if sc == Server
+                     then mkName $ messageHaskName $ getEventCName iname mname
+                     else mkName $ messageHaskName $ getRequestCName iname mname
+          pname = if sc == Server
+                     then mkName $ getEventHaskName iname mname
+                     else mkName $ getRequestHaskName iname mname
+      in do
+         let funexp = return $ VarE hname
+             numNewIds = sum $ map isNewId $ messageArguments msg
+             isNewId arg = case arg of
+                 (_, NewIdArg _, _) -> 1
+                 _                  -> 0
+             fixedArgs = if numNewIds==1
+                 then filter notNewIds $ messageArguments msg
+                 else messageArguments msg
+             notNewIds arg = case arg of
+                 (_, NewIdArg _, _) -> False
+                 _                  -> True
+             returnType = if numNewIds==1
+                 then argTypeToType $ snd3 $ head $ filter (not.notNewIds) $ messageArguments msg
+                 else [t|()|]
+         -- gens <-  [d|$(return $ VarP pname) =  $(argTypeMarshaller (map snd3 $ fixedArgs) funexp) |]
+         let (pats, fun) = argTypeMarshaller fixedArgs funexp
+         gens <- [d|$(return $ VarP pname) = $(LamE pats <$> fun) |]
+         return gens
 
 
-generateClientMethods :: ProtocolSpec -> Q [Dec]
-generateClientMethods ps = generateMethods ps Client
+generateClientInternalMethods :: ProtocolSpec -> Q [Dec]
+generateClientInternalMethods ps = generateInternalMethods ps Client
 
-generateServerMethods :: ProtocolSpec -> Q [Dec]
-generateServerMethods ps = generateMethods ps Server
+generateServerInternalMethods :: ProtocolSpec -> Q [Dec]
+generateServerInternalMethods ps = generateInternalMethods ps Server
 
+generateClientExternalMethods :: ProtocolSpec -> Q [Dec]
+generateClientExternalMethods ps = generateExternalMethods ps Client
 
-genMessageType :: Interface -> Message -> TypeQ
-genMessageType iface msg =
+generateServerExternalMethods :: ProtocolSpec -> Q [Dec]
+generateServerExternalMethods ps = generateExternalMethods ps Server
+
+genMessageType :: Message -> TypeQ
+genMessageType msg =
   let
     numNewIds = sum $ map isNewId $ messageArguments msg
     isNewId arg = case arg of
@@ -89,7 +136,7 @@ genMessageType iface msg =
                     else [t|()|]
 
   in
-    foldl (\addtype curtype -> [t|$curtype -> $addtype|]) [t|IO $(returnType)|] $ argTypeToType (ObjectArg (interfaceName iface)) : (map (argTypeToType.snd3) fixedArgs)
+    foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map (argTypeToType.snd3) fixedArgs)
 
 argTypeToType :: ArgumentType -> TypeQ
 argTypeToType IntArg = [t| {#type int32_t#} |]
@@ -101,6 +148,27 @@ argTypeToType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
 argTypeToType ArrayArg = undefined
 argTypeToType FdArg = [t| {#type int32_t#} |]
 
+marshallerVar :: Argument -> Name
+marshallerVar (name, _, _) = mkName name
+
+argTypeMarshaller :: [Argument] -> ExpQ -> ([Pat], ExpQ)
+argTypeMarshaller args fun =
+  let vars = map marshallerVar args
+      mk = return . VarE . marshallerVar
+      applyMarshaller :: [Argument] -> ExpQ -> ExpQ
+      applyMarshaller (arg@(_, IntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int) )|])|]
+      applyMarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Word))|]) |]
+      applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int))|]) |] -- FIXME double conversion stuff!
+      applyMarshaller (arg@(_, StringArg, _):as) fun = [|withCString $(mk arg) (\cstr -> $(applyMarshaller as [|$fun cstr|]))|]
+      applyMarshaller (arg@(_, (ObjectArg iname), _):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
+      applyMarshaller (arg@(_, (NewIdArg iname), _):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyMarshaller (arg@(_, ArrayArg, _):as) fun = undefined
+      applyMarshaller (arg@(_, FdArg, _):as) fun = [|$(applyMarshaller as [|$fun (unFd ($(mk arg)))|]) |]
+      applyMarshaller [] fun = fun
+  in  (map VarP vars, applyMarshaller args fun)
+
+unFd (Fd k) = k
+
 -- | get the wayland-style name for some request message
 getRequestCName :: InterfaceName -> String -> String
 getRequestCName iface msg = "x_"++iface ++ "_" ++ msg
@@ -108,6 +176,12 @@ getRequestCName iface msg = "x_"++iface ++ "_" ++ msg
 -- | get the wayland-style name for some event message method (ie server-side)
 getEventCName :: InterfaceName -> String -> String
 getEventCName iface msg = "x_"++iface++"_send_"++msg
+
+getRequestHaskName :: InterfaceName -> String -> String
+getRequestHaskName iface msg = (toCamel $ removeInitial "wl_" iface) ++ (capitalize $ toCamel msg)
+
+getEventHaskName :: InterfaceName -> String -> String
+getEventHaskName iface msg = (toCamel $ removeInitial "wl_" iface) ++ "Send" ++ (capitalize $ toCamel msg)
 
 -- | takes a wayland-style message name and interface context and generates a pretty Haskell-style function name
 messageHaskName :: String -> String
