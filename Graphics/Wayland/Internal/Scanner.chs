@@ -50,9 +50,15 @@ generateEnums ps = concat $ map eachGenerateEnums (specInterfaces ps) where
 data ServerClient = Server | Client  deriving (Eq)
 -- | generate FFI for a certain side of the API
 generateInternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateInternalMethods ps sc = liftM concat $ sequence $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
-  generateRequests :: Interface -> Q [Dec]
-  generateRequests iface = sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
+generateInternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+  generateInterface :: Interface -> Q [Dec]
+  generateInterface iface = sequence $ if sc == Server
+                                          then methodBindings
+                                          else interfaceBinding : methodBindings   where
+   -- Generate bindings to the wl_interface * constants (for proxy usage).
+   interfaceBinding = (forImpD cCall unsafe ("& " ++ interfaceName iface ++ "_interface") (mkName $ interfaceName iface ++ "_interface") [t|Ptr Interface|]) -- the type here doesn't really make sense (since newtype Interface = Interface (Ptr Interface)), but whatever - just passing values around
+   -- Generate bindings to requests
+   methodBindings = map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
     generateRequest :: Message -> Q Dec
     generateRequest msg =
       let iname = interfaceName iface
@@ -69,9 +75,9 @@ generateInternalMethods ps sc = liftM concat $ sequence $ map generateRequests $
       in forImpD cCall unsafe cname hname (genMessageType msg)
 
 generateExternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateExternalMethods ps sc = liftM concat $ sequence $ map generateRequests $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
-  generateRequests :: Interface -> Q [Dec]
-  generateRequests iface = liftM concat $ sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
+generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+  generateInterface :: Interface -> Q [Dec]
+  generateInterface iface = liftM concat $ sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
     generateRequest :: Message -> Q [Dec]
     generateRequest msg =
       let iname = interfaceName iface

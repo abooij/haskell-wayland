@@ -40,7 +40,6 @@ library
   default-extensions:  ForeignFunctionInterface
   -- hs-source-dirs:
   default-language:    Haskell2010
-  c-sources: cbits/wayland.c
   cc-options: -fPIC
   extra-libraries:
     wayland-client,
@@ -48,8 +47,13 @@ library
     wayland-egl,
     wayland-server
   includes:
+    wayland-client.h,
+    wayland-server.h,
+    wayland-client-protocol.h,
+    wayland-server-protocol.h,
     wayland-util.h,
     wayland-version.h
+  c-sources: cbits/wayland.c
 
 test-suite firsttest
   hs-source-dirs: tests
