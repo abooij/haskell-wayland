@@ -13,3 +13,4 @@ import Graphics.Wayland.Internal.SpliceTypes
 
 
 $((runIO $ readProtocol) >>= generateServerExternalMethods)
+$((runIO $ readProtocol) >>= generateServerListenersExternal)

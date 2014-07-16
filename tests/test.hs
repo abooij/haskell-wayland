@@ -1,4 +1,4 @@
-import Graphics.Wayland
+import Graphics.Wayland.Client
 
 main = do
   a <- displayConnect

@@ -1,7 +1,7 @@
 module Graphics.Wayland (
   version,
-  module Graphics.Wayland.Client,
-  module Graphics.Wayland.Server,
+  -- module Graphics.Wayland.Client,
+  -- module Graphics.Wayland.Server,
    ) where
 
 import Graphics.Wayland.Client

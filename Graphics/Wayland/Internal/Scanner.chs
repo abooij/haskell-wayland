@@ -17,6 +17,7 @@ import System.Process
 import System.IO
 import System.Posix.Types
 import Language.Haskell.TH
+import Language.Haskell.TH.Syntax (VarStrictType)
 
 import Graphics.Wayland.Internal.Protocol
 
@@ -72,7 +73,7 @@ generateInternalMethods ps sc = liftM concat $ sequence $ map generateInterface 
           pname = if sc == Server
                      then mkName $ getEventHaskName iname mname
                      else mkName $ getRequestHaskName iname mname
-      in forImpD cCall unsafe cname hname (genMessageType msg)
+      in forImpD cCall unsafe cname hname (genMessageCType msg)
 
 generateExternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
 generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
@@ -111,6 +112,105 @@ generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface 
          gens <- [d|$(return $ VarP pname) = $(LamE pats <$> fun) |]
          return gens
 
+generateListenersExternal :: ProtocolSpec -> ServerClient -> Q [Dec]
+generateListenersExternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerExternal iface sc)  $ specInterfaces sp
+
+generateClientListenersExternal sp = generateListenersExternal sp Client
+generateServerListenersExternal sp = generateListenersExternal sp Server
+
+generateListenerExternal :: Interface -> ServerClient -> Q [Dec]
+generateListenerExternal iface sc =
+  let -- declare a Listener or Interface type for this interface
+      typeName :: Name
+      typeName = case sc of
+                       Server -> mkName $ (prettyInterfaceName $ interfaceName iface ++ "Interface")
+                       Client -> mkName $ (prettyInterfaceName $ interfaceName iface ++ "Listener")
+      iname :: String
+      iname = interfaceName iface
+      messages :: [Message]
+      messages = case sc of
+                   Server -> interfaceMethods iface
+                   Client -> interfaceEvents iface
+      mkMessageName :: Message -> Name
+      mkMessageName msg = case sc of
+                       Server -> mkName $ getRequestHaskName iname (messageName msg)
+                       Client -> mkName $ getEventHaskName iname (messageName msg)
+      mkListener :: Message -> VarStrictTypeQ
+      mkListener event = do
+        let name = mkMessageName event
+        ltype <- mkListenerType event
+        return (name, NotStrict, ltype)
+      listenerType :: DecQ
+      listenerType = do
+        recArgs <- sequence $ map mkListener messages
+        return $ DataD [] typeName [] [RecC typeName recArgs] []
+      mkListenerType :: Message -> TypeQ
+      mkListenerType event = genMessageHaskType event
+      mkListenerCType event = genMessageCType event
+
+      -- compute FunPtr size and alignment based on some dummy C type
+      funcSize = {#sizeof notify_func_t#} :: Integer
+      funcAlign = {#alignof notify_func_t#} :: Integer
+      -- instance dec: this struct better be Storable
+      instanceDec :: DecsQ
+      instanceDec = do
+        instanceName <- [t|Storable $(return $ ConT typeName)|]
+        -- instanceDecs <- [d|
+        --   sizeOf _    = $(return $ LitE $ IntegerL (funcSize * (fromIntegral $ length messages)))
+        --   alignment _ = $(return $ LitE $ IntegerL funcAlign)
+        --   peek _ = undefined
+        --   poke _ _ = undefined
+        --   |]
+        let numNewIds msg = sum $ map isNewId $ messageArguments msg
+            isNewId arg = case arg of
+                (_, NewIdArg _, _) -> 1
+                _                  -> 0
+            fixedArgs msg = if numNewIds msg == 1
+                then filter notNewIds $ messageArguments msg
+                else messageArguments msg
+            notNewIds arg = case arg of
+                (_, NewIdArg _, _) -> False
+                _                  -> True
+        [d|instance Storable $(conT typeName) where
+            sizeOf _ = $(litE $ IntegerL $ funcSize * (fromIntegral $ length messages))
+            alignment _ = $(return $ LitE $ IntegerL funcAlign)
+	    peek _ = undefined  -- we shouldn't need to be able to read listeners (since we can't change them anyway)
+	    poke ptr record = $(doE $ ( zipWith (\ event idx ->
+                noBindS [e|do
+                  let haskFun = $(return $ VarE $ mkMessageName event) record
+                      unmarshaller fun = $(let (pats, funexp) = argTypeUnmarshaller (fixedArgs event) (return $ VarE 'fun)
+                                           in LamE pats <$> funexp)
+
+                  funptr <- $(return $ (VarE $ wrapperName event)) (unmarshaller haskFun)
+                  -- funptr <- $(return $ AppE (VarE $ wrapperName event) (AppE (VarE $ mkMessageName event) (VarE 'record)))
+                  pokeByteOff ptr $(litE $ IntegerL (idx * funcSize)) funptr
+                |] )
+              messages [0..]
+              ) ++ [noBindS [e|return () |]] )
+            |]
+
+
+      -- FunPtr wrapper
+      wrapperName event = mkName $ prettyMessageName iname (messageName event ++ "_wrapper")
+      wrapperDec event = forImpD CCall Unsafe "wrapper" (wrapperName event) [t|$(mkListenerCType event) -> IO (FunPtr ($(mkListenerCType event))) |]
+
+      -- bind add_listener
+
+  in do
+    some <- sequence $ listenerType : map wrapperDec messages
+    other <- instanceDec
+    return $ some ++ other
+
+
+generateListenersInternal :: ProtocolSpec -> ServerClient -> Q [Dec]
+generateListenersInternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerInternal iface sc)  $ specInterfaces sp
+
+generateClientListenersInternal sp = generateListenersInternal sp Client
+generateServerListenersInternal sp = generateListenersInternal sp Server
+
+generateListenerInternal :: Interface -> ServerClient -> Q [Dec]
+generateListenerInternal iface sc = undefined
+
 
 generateClientInternalMethods :: ProtocolSpec -> Q [Dec]
 generateClientInternalMethods ps = generateInternalMethods ps Client
@@ -124,8 +224,14 @@ generateClientExternalMethods ps = generateExternalMethods ps Client
 generateServerExternalMethods :: ProtocolSpec -> Q [Dec]
 generateServerExternalMethods ps = generateExternalMethods ps Server
 
-genMessageType :: Message -> TypeQ
-genMessageType msg =
+genMessageCType :: Message -> TypeQ
+genMessageCType = genMessageType argTypeToType
+
+genMessageHaskType :: Message -> TypeQ
+genMessageHaskType = genMessageType argTypeToHaskType
+
+genMessageType :: (ArgumentType -> TypeQ) -> Message -> TypeQ
+genMessageType fun msg =
   let
     numNewIds = sum $ map isNewId $ messageArguments msg
     isNewId arg = case arg of
@@ -138,11 +244,10 @@ genMessageType msg =
                       (_, NewIdArg _, _) -> False
                       _                  -> True
     returnType = if numNewIds==1
-                    then argTypeToType $ snd3 $ head $ filter (not.notNewIds) $ messageArguments msg
+                    then fun $ snd3 $ head $ filter (not.notNewIds) $ messageArguments msg
                     else [t|()|]
-
   in
-    foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map (argTypeToType.snd3) fixedArgs)
+    foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map (fun.snd3) fixedArgs)
 
 argTypeToType :: ArgumentType -> TypeQ
 argTypeToType IntArg = [t| {#type int32_t#} |]
@@ -153,6 +258,16 @@ argTypeToType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
 argTypeToType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
 argTypeToType ArrayArg = undefined
 argTypeToType FdArg = [t| {#type int32_t#} |]
+
+argTypeToHaskType :: ArgumentType -> TypeQ
+argTypeToHaskType IntArg = [t|Int|]
+argTypeToHaskType UIntArg = [t|Word|]
+argTypeToHaskType FixedArg = [t|Int|] -- FIXME double conversion!!
+argTypeToHaskType StringArg = [t|String|]
+argTypeToHaskType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
+argTypeToHaskType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
+argTypeToHaskType ArrayArg = undefined
+argTypeToHaskType FdArg = [t|Fd|]
 
 marshallerVar :: Argument -> Name
 marshallerVar (name, _, _) = mkName name
@@ -174,6 +289,24 @@ argTypeMarshaller args fun =
   in  (map VarP vars, applyMarshaller args fun)
 
 unFd (Fd k) = k
+
+-- | Opposite of argTypeMarshaller.
+argTypeUnmarshaller :: [Argument] -> ExpQ -> ([Pat], ExpQ)
+argTypeUnmarshaller args fun =
+  let vars = map marshallerVar args
+      mk = return . VarE . marshallerVar
+      applyUnmarshaller :: [Argument] -> ExpQ -> ExpQ
+      applyUnmarshaller (arg@(_, IntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt) )|])|]
+      applyUnmarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CUInt))|]) |]
+      applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt))|]) |] -- FIXME double conversion stuff!
+      applyUnmarshaller (arg@(_, StringArg, _):as) fun = [|do str <- peekCString $(mk arg); $(applyUnmarshaller as [|$fun str|])|]
+      applyUnmarshaller (arg@(_, (ObjectArg iname), _):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
+      applyUnmarshaller (arg@(_, (NewIdArg iname), _):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyUnmarshaller (arg@(_, ArrayArg, _):as) fun = undefined
+      applyUnmarshaller (arg@(_, FdArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (Fd ($(mk arg)))|]) |]
+      applyUnmarshaller [] fun = fun
+  in  (map VarP vars, applyUnmarshaller args fun)
+
 
 -- | get the wayland-style name for some request message
 getRequestCName :: InterfaceName -> String -> String
