@@ -123,8 +123,8 @@ generateListenerExternal iface sc =
   let -- declare a Listener or Interface type for this interface
       typeName :: Name
       typeName = case sc of
-                       Server -> mkName $ (prettyInterfaceName $ interfaceName iface ++ "Interface")
-                       Client -> mkName $ (prettyInterfaceName $ interfaceName iface ++ "Listener")
+                       Server -> mkName $ (prettyInterfaceName $ iname ++ "Interface")
+                       Client -> mkName $ (prettyInterfaceName $ iname ++ "Listener")
       iname :: String
       iname = interfaceName iface
       messages :: [Message]
@@ -195,11 +195,29 @@ generateListenerExternal iface sc =
       wrapperDec event = forImpD CCall Unsafe "wrapper" (wrapperName event) [t|$(mkListenerCType event) -> IO (FunPtr ($(mkListenerCType event))) |]
 
       -- bind add_listener
+      foreignName = mkName $ prettyMessageName iname "c_add_listener"
+      haskName = mkName $ prettyMessageName iname "add_listener"
+      foreignDec :: Q Dec
+      foreignDec = forImpD CCall Unsafe (iname ++ "_add_listener") foreignName [t|$(conT $ mkName $ prettyInterfaceName iname) -> (Ptr $(conT $ typeName))  -> (Ptr ()) -> CInt|]
+      apiDec :: Q [Dec]
+      apiDec = [d|$(return $ VarP $ mkName $ prettyMessageName iname "add_listener") = \ iface listener ->
+                   do
+                    -- malloc RAM for Listener type
+                    memory <- malloc
+                    -- store Listener type
+                    poke memory listener
+                    -- call foreign add_listener on stored Listener type
+                    return $ 0 == $(return $ VarE $ foreignName) iface memory nullPtr
+                    |]
+
+      -- apiDec = [d|$(return $ VarP (mkName "bla")) listener = return|]
 
   in do
     some <- sequence $ listenerType : map wrapperDec messages
     other <- instanceDec
-    return $ some ++ other
+    more <- foreignDec
+    last <- apiDec
+    return $ some ++ other ++ [more] ++ last
 
 
 generateListenersInternal :: ProtocolSpec -> ServerClient -> Q [Dec]
