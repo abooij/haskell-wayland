@@ -1,4 +1,4 @@
-module Graphics.Wayland.Internal.Protocol where
+module Graphics.Wayland.Scanner.Protocol where
 
 import Data.Functor
 import Data.Maybe

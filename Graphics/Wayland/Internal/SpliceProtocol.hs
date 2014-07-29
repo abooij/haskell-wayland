@@ -6,8 +6,8 @@ import Data.Functor
 import Language.Haskell.TH
 import Foreign.C.Types
 
-import Graphics.Wayland.Internal.Protocol
-import Graphics.Wayland.Internal.Scanner
+import Graphics.Wayland.Scanner.Protocol
+import Graphics.Wayland.Scanner
 import Graphics.Wayland.Internal.SpliceTypes
 
 

@@ -1,30 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Graphics.Wayland.Internal.Scanner where
+module Graphics.Wayland.Scanner where
 
 import Data.Functor
 import Control.Monad (liftM)
-import Data.Maybe
-import Data.Char
-import Data.List
-import Data.Word
 import Foreign
 import Foreign.C.Types
-import Foreign.C.String
-import System.IO.Unsafe
-import Text.XML.Light
-import System.Process
-import System.IO
-import System.Posix.Types
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax (VarStrictType)
 
-import Graphics.Wayland.Internal.Protocol
-
-#include <wayland-server.h>
-
-{#context prefix="wl"#}
-
+import Graphics.Wayland.Scanner.Marshaller
+import Graphics.Wayland.Scanner.Names
+import Graphics.Wayland.Scanner.Protocol
 
 generateTypes :: ProtocolSpec -> [Dec]
 generateTypes ps = map generateInterface (specInterfaces ps) where
@@ -148,9 +135,6 @@ generateListenerExternal iface sc =
       mkListenerType event = genMessageHaskType event
       mkListenerCType event = genMessageCType event
 
-      -- compute FunPtr size and alignment based on some dummy C type
-      funcSize = {#sizeof notify_func_t#} :: Integer
-      funcAlign = {#alignof notify_func_t#} :: Integer
       -- instance dec: this struct better be Storable
       instanceDec :: DecsQ
       instanceDec = do
@@ -266,105 +250,3 @@ genMessageType fun msg =
                     else [t|()|]
   in
     foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map (fun.snd3) fixedArgs)
-
-argTypeToType :: ArgumentType -> TypeQ
-argTypeToType IntArg = [t| {#type int32_t#} |]
-argTypeToType UIntArg = [t| {#type uint32_t#} |]
-argTypeToType FixedArg = [t|{#type fixed_t#}|]
-argTypeToType StringArg = [t| Ptr CChar |]
-argTypeToType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToType ArrayArg = undefined
-argTypeToType FdArg = [t| {#type int32_t#} |]
-
-argTypeToHaskType :: ArgumentType -> TypeQ
-argTypeToHaskType IntArg = [t|Int|]
-argTypeToHaskType UIntArg = [t|Word|]
-argTypeToHaskType FixedArg = [t|Int|] -- FIXME double conversion!!
-argTypeToHaskType StringArg = [t|String|]
-argTypeToHaskType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToHaskType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToHaskType ArrayArg = undefined
-argTypeToHaskType FdArg = [t|Fd|]
-
-marshallerVar :: Argument -> Name
-marshallerVar (name, _, _) = mkName name
-
-argTypeMarshaller :: [Argument] -> ExpQ -> ([Pat], ExpQ)
-argTypeMarshaller args fun =
-  let vars = map marshallerVar args
-      mk = return . VarE . marshallerVar
-      applyMarshaller :: [Argument] -> ExpQ -> ExpQ
-      applyMarshaller (arg@(_, IntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int) )|])|]
-      applyMarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Word))|]) |]
-      applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int))|]) |] -- FIXME double conversion stuff!
-      applyMarshaller (arg@(_, StringArg, _):as) fun = [|withCString $(mk arg) (\cstr -> $(applyMarshaller as [|$fun cstr|]))|]
-      applyMarshaller (arg@(_, (ObjectArg iname), _):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyMarshaller (arg@(_, (NewIdArg iname), _):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
-      applyMarshaller (arg@(_, ArrayArg, _):as) fun = undefined
-      applyMarshaller (arg@(_, FdArg, _):as) fun = [|$(applyMarshaller as [|$fun (unFd ($(mk arg)))|]) |]
-      applyMarshaller [] fun = fun
-  in  (map VarP vars, applyMarshaller args fun)
-
-unFd (Fd k) = k
-
--- | Opposite of argTypeMarshaller.
-argTypeUnmarshaller :: [Argument] -> ExpQ -> ([Pat], ExpQ)
-argTypeUnmarshaller args fun =
-  let vars = map marshallerVar args
-      mk = return . VarE . marshallerVar
-      applyUnmarshaller :: [Argument] -> ExpQ -> ExpQ
-      applyUnmarshaller (arg@(_, IntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt) )|])|]
-      applyUnmarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CUInt))|]) |]
-      applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt))|]) |] -- FIXME double conversion stuff!
-      applyUnmarshaller (arg@(_, StringArg, _):as) fun = [|do str <- peekCString $(mk arg); $(applyUnmarshaller as [|$fun str|])|]
-      applyUnmarshaller (arg@(_, (ObjectArg iname), _):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyUnmarshaller (arg@(_, (NewIdArg iname), _):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
-      applyUnmarshaller (arg@(_, ArrayArg, _):as) fun = undefined
-      applyUnmarshaller (arg@(_, FdArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (Fd ($(mk arg)))|]) |]
-      applyUnmarshaller [] fun = fun
-  in  (map VarP vars, applyUnmarshaller args fun)
-
-
--- | get the wayland-style name for some request message
-getRequestCName :: InterfaceName -> String -> String
-getRequestCName iface msg = "x_"++iface ++ "_" ++ msg
-
--- | get the wayland-style name for some event message method (ie server-side)
-getEventCName :: InterfaceName -> String -> String
-getEventCName iface msg = "x_"++iface++"_send_"++msg
-
-getRequestHaskName :: InterfaceName -> String -> String
-getRequestHaskName iface msg = (toCamel $ removeInitial "wl_" iface) ++ (capitalize $ toCamel msg)
-
-getEventHaskName :: InterfaceName -> String -> String
-getEventHaskName iface msg = (toCamel $ removeInitial "wl_" iface) ++ "Send" ++ (capitalize $ toCamel msg)
-
--- | takes a wayland-style message name and interface context and generates a pretty Haskell-style function name
-messageHaskName :: String -> String
-messageHaskName = toCamel . removeInitial "wl_"
-
--- | takes a wayland-style interface name and generates a TH name for types
-interfaceTypeName :: InterfaceName -> Name
-interfaceTypeName = mkName . prettyInterfaceName
-
--- | convert some_string to someString
-toCamel :: String -> String
-toCamel (a:'_':c:d) | isAlpha a, isAlpha c = a : (toUpper c) : (toCamel d)
-toCamel (a:b) = a : toCamel b
-toCamel x = x
-
--- | if the second argument starts with the first argument, strip that start
-removeInitial :: Eq a => [a] -> [a] -> [a]
-removeInitial remove input = if isPrefixOf remove input
-                                     then drop (length remove) input
-                                     else input
-
-prettyInterfaceName :: String -> String
-prettyInterfaceName = capitalize . toCamel . removeInitial "wl_"
-
-prettyMessageName :: String -> String -> String
-prettyMessageName ifacename msgname = toCamel $ ((removeInitial "wl_" ifacename) ++ "_" ++ msgname)
-
-snd3 :: (a,b,c) -> b
-snd3 (a,b,c) = b
