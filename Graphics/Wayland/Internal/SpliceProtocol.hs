@@ -11,5 +11,5 @@ import Graphics.Wayland.Scanner
 import Graphics.Wayland.Internal.SpliceTypes
 
 
-$((runIO $ readProtocol) >>= generateClientInternalMethods)
-$((runIO $ readProtocol) >>= generateServerInternalMethods)
+$(runIO readProtocol >>= generateClientInternalMethods)
+$(runIO readProtocol >>= generateServerInternalMethods)

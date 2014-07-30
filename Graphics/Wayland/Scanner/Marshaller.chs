@@ -11,6 +11,7 @@ import Language.Haskell.TH
 
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner.Names
+import Graphics.Wayland.Scanner.Types
 
 #include <wayland-server.h>
 
@@ -18,23 +19,23 @@ import Graphics.Wayland.Scanner.Names
 
 
 
-argTypeToType :: ArgumentType -> TypeQ
-argTypeToType IntArg = [t| {#type int32_t#} |]
-argTypeToType UIntArg = [t| {#type uint32_t#} |]
-argTypeToType FixedArg = [t|{#type fixed_t#}|]
-argTypeToType StringArg = [t| Ptr CChar |]
-argTypeToType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToType ArrayArg = undefined
-argTypeToType FdArg = [t| {#type int32_t#} |]
+argTypeToCType :: ArgumentType -> TypeQ
+argTypeToCType IntArg = [t| {#type int32_t#} |]
+argTypeToCType UIntArg = [t| {#type uint32_t#} |]
+argTypeToCType FixedArg = [t|{#type fixed_t#}|]
+argTypeToCType StringArg = [t| Ptr CChar |]
+argTypeToCType (ObjectArg iname) = return $ ConT iname
+argTypeToCType (NewIdArg iname) = return $ ConT iname
+argTypeToCType ArrayArg = undefined
+argTypeToCType FdArg = [t| {#type int32_t#} |]
 
 argTypeToHaskType :: ArgumentType -> TypeQ
 argTypeToHaskType IntArg = [t|Int|]
 argTypeToHaskType UIntArg = [t|Word|]
 argTypeToHaskType FixedArg = [t|Int|] -- FIXME double conversion!!
 argTypeToHaskType StringArg = [t|String|]
-argTypeToHaskType (ObjectArg iname) = return $ ConT $ interfaceTypeName iname
-argTypeToHaskType (NewIdArg iname) = return $ ConT $ interfaceTypeName iname
+argTypeToHaskType (ObjectArg iname) = return $ ConT iname
+argTypeToHaskType (NewIdArg iname) = return $ ConT iname
 argTypeToHaskType ArrayArg = undefined
 argTypeToHaskType FdArg = [t|Fd|]
 

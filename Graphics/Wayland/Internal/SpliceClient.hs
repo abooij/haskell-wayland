@@ -12,5 +12,5 @@ import Graphics.Wayland.Internal.SpliceProtocol
 import Graphics.Wayland.Internal.SpliceTypes
 
 
-$((runIO $ readProtocol) >>= generateClientExternalMethods)
-$((runIO $ readProtocol) >>= generateClientListenersExternal)
+$(runIO readProtocol >>= generateClientExternalMethods)
+$(runIO readProtocol >>= generateClientListenersExternal)

@@ -12,75 +12,70 @@ import Language.Haskell.TH.Syntax (VarStrictType)
 import Graphics.Wayland.Scanner.Marshaller
 import Graphics.Wayland.Scanner.Names
 import Graphics.Wayland.Scanner.Protocol
+import Graphics.Wayland.Scanner.Types
 
 generateTypes :: ProtocolSpec -> [Dec]
-generateTypes ps = map generateInterface (specInterfaces ps) where
+generateTypes ps = map generateInterface (protocolInterfaces ps) where
+  generateInterface :: Interface -> Dec
   generateInterface iface =
-    let qname = mkName $ prettyInterfaceName $ interfaceName iface
+    let qname = interfaceTypeName (protocolName ps) (interfaceName iface)
     in
       (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT qname))]) [mkName "Show"])
 
-makeEnumHaskName :: Interface -> WLEnum -> String
-makeEnumHaskName iface wlenum = (prettyInterfaceName $ interfaceName iface) ++ (prettyInterfaceName $ enumName wlenum)
-
 generateEnums :: ProtocolSpec -> [Dec]
-generateEnums ps = concat $ map eachGenerateEnums (specInterfaces ps) where
+generateEnums ps = concat $ map eachGenerateEnums (protocolInterfaces ps) where
   eachGenerateEnums :: Interface -> [Dec]
   eachGenerateEnums iface = concat $ map generateEnum $ interfaceEnums iface where
     generateEnum :: WLEnum -> [Dec]
     generateEnum wlenum =
-      let qname = mkName $ makeEnumHaskName iface wlenum
+      let qname = enumTypeName (protocolName ps) (interfaceName iface) (enumName wlenum)
       in
         NewtypeD [] qname [] (NormalC qname [(NotStrict, (ConT ''Int))]) [mkName "Show", mkName "Eq"]
         :
-        map (\(entry, val) -> (ValD (VarP $ mkName $ decapitalize $ makeEnumHaskName iface wlenum ++ prettyInterfaceName entry) (NormalB $ AppE (ConE qname) $ LitE $ IntegerL $ toInteger val) [])) (enumEntries wlenum)
+        map (\(entry, val) -> (ValD (VarP $ enumEntryHaskName (protocolName ps) (interfaceName iface) (enumName wlenum) entry) (NormalB $ AppE (ConE qname) $ LitE $ IntegerL $ toInteger val) [])) (enumEntries wlenum)
 
-data ServerClient = Server | Client  deriving (Eq)
 -- | generate FFI for a certain side of the API
 generateInternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateInternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+generateInternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ protocolInterfaces ps where
   generateInterface :: Interface -> Q [Dec]
-  generateInterface iface = sequence $ if sc == Server
-                                          then methodBindings
-                                          else interfaceBinding : methodBindings   where
-   -- Generate bindings to the wl_interface * constants (for proxy usage).
-   interfaceBinding = (forImpD cCall unsafe ("& " ++ interfaceName iface ++ "_interface") (mkName $ interfaceName iface ++ "_interface") [t|Ptr Interface|]) -- the type here doesn't really make sense (since newtype Interface = Interface (Ptr Interface)), but whatever - just passing values around
-   -- Generate bindings to requests
-   methodBindings = map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
-    generateRequest :: Message -> Q Dec
-    generateRequest msg =
-      let iname = interfaceName iface
+  generateInterface iface = sequence $ map generateMessage $ case sc of
+                                                               Server -> interfaceEvents iface
+                                                               Client -> interfaceRequests iface
+                                                               where
+    generateMessage :: Message -> Q Dec
+    generateMessage msg =
+      let pname = protocolName ps
+          iname = interfaceName iface
           mname = messageName msg
-          cname = if sc == Server
-                     then getEventCName iname mname
-                     else getRequestCName iname mname
-          hname = if sc == Server
-                     then mkName $ messageHaskName $ getEventCName iname mname
-                     else mkName $ messageHaskName $ getRequestCName iname mname
-          pname = if sc == Server
-                     then mkName $ getEventHaskName iname mname
-                     else mkName $ getRequestHaskName iname mname
+          -- name of C function as in the header files
+          cname = case sc of
+                    Server -> eventForeignCName Server iname mname
+                    Client -> requestForeignCName iname mname
+          -- "dirty" name of internal raw binding to C function
+          hname = case sc of
+                    Server -> eventInternalCName iname mname
+                    Client -> requestInternalCName iname mname
       in forImpD cCall unsafe cname hname (genMessageCType msg)
 
 generateExternalMethods :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ specInterfaces ps where
+generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter (\iface -> if sc == Server then interfaceName iface /= "wl_display" else True) $ protocolInterfaces ps where
   generateInterface :: Interface -> Q [Dec]
-  generateInterface iface = liftM concat $ sequence $ map generateRequest $ if sc == Server then interfaceEvents iface else interfaceMethods iface where
-    generateRequest :: Message -> Q [Dec]
-    generateRequest msg =
+  generateInterface iface = liftM concat $ sequence $ map generateMessage $ if sc == Server then interfaceEvents iface else interfaceRequests iface where
+    generateMessage :: Message -> Q [Dec]
+    generateMessage msg =
       let iname = interfaceName iface
           mname = messageName msg
-          cname = if sc == Server
-                     then getEventCName iname mname
-                     else getRequestCName iname mname
-          hname = if sc == Server
-                     then mkName $ messageHaskName $ getEventCName iname mname
-                     else mkName $ messageHaskName $ getRequestCName iname mname
-          pname = if sc == Server
-                     then mkName $ getEventHaskName iname mname
-                     else mkName $ getRequestHaskName iname mname
+          pname = protocolName ps
+          -- name of haskell foreign bind to c function
+          cname = case sc of
+                    Server -> eventInternalCName iname mname
+                    Client -> requestInternalCName iname mname
+          -- name of pretty Haskell API that we're exposing
+          hname = case sc of
+                    Server -> eventHaskName pname iname mname
+                    Client -> requestHaskName pname iname mname
       in do
-         let funexp = return $ VarE hname
+         let funexp = return $ VarE cname
              numNewIds = sum $ map isNewId $ messageArguments msg
              isNewId arg = case arg of
                  (_, NewIdArg _, _) -> 1
@@ -91,37 +86,32 @@ generateExternalMethods ps sc = liftM concat $ sequence $ map generateInterface 
              notNewIds arg = case arg of
                  (_, NewIdArg _, _) -> False
                  _                  -> True
-             returnType = if numNewIds==1
-                 then argTypeToType $ snd3 $ head $ filter (not.notNewIds) $ messageArguments msg
-                 else [t|()|]
-         -- gens <-  [d|$(return $ VarP pname) =  $(argTypeMarshaller (map snd3 $ fixedArgs) funexp) |]
          let (pats, fun) = argTypeMarshaller fixedArgs funexp
-         gens <- [d|$(return $ VarP pname) = $(LamE pats <$> fun) |]
+         gens <- [d|$(return $ VarP hname) = $(LamE pats <$> fun) |]
          return gens
 
 generateListenersExternal :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateListenersExternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerExternal iface sc)  $ specInterfaces sp
+generateListenersExternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerExternal sp iface sc)  $ protocolInterfaces sp
 
 generateClientListenersExternal sp = generateListenersExternal sp Client
 generateServerListenersExternal sp = generateListenersExternal sp Server
 
-generateListenerExternal :: Interface -> ServerClient -> Q [Dec]
-generateListenerExternal iface sc =
+generateListenerExternal :: ProtocolSpec -> Interface -> ServerClient -> Q [Dec]
+generateListenerExternal sp iface sc =
   let -- declare a Listener or Interface type for this interface
       typeName :: Name
-      typeName = case sc of
-                       Server -> mkName $ (prettyInterfaceName $ iname ++ "Interface")
-                       Client -> mkName $ (prettyInterfaceName $ iname ++ "Listener")
+      typeName = messageListenerTypeName sc (protocolName sp) (interfaceName iface)
+      pname = protocolName sp
       iname :: String
       iname = interfaceName iface
       messages :: [Message]
       messages = case sc of
-                   Server -> interfaceMethods iface
+                   Server -> interfaceRequests iface
                    Client -> interfaceEvents iface
       mkMessageName :: Message -> Name
       mkMessageName msg = case sc of
-                       Server -> mkName $ getRequestHaskName iname (messageName msg)
-                       Client -> mkName $ getEventHaskName iname (messageName msg)
+                       Server -> eventHaskName pname iname (messageName msg)
+                       Client -> requestHaskName pname iname (messageName msg)
       mkListener :: Message -> VarStrictTypeQ
       mkListener event = do
         let name = mkMessageName event
@@ -175,23 +165,23 @@ generateListenerExternal iface sc =
 
 
       -- FunPtr wrapper
-      wrapperName event = mkName $ prettyMessageName iname (messageName event ++ "_wrapper")
+      wrapperName event = messageListenerWrapperName sc iname (messageName event)
       wrapperDec event = forImpD CCall Unsafe "wrapper" (wrapperName event) [t|$(mkListenerCType event) -> IO (FunPtr ($(mkListenerCType event))) |]
 
       -- bind add_listener
-      foreignName = mkName $ prettyMessageName iname "c_add_listener"
-      haskName = mkName $ prettyMessageName iname "add_listener"
+      haskName = requestHaskName pname iname "add_listener" -- FIXME this only works for the client. Also dunno why I can't use this variable in the splice below.
+      foreignName = requestInternalCName iname "c_add_listener"
       foreignDec :: Q Dec
-      foreignDec = forImpD CCall Unsafe (iname ++ "_add_listener") foreignName [t|$(conT $ mkName $ prettyInterfaceName iname) -> (Ptr $(conT $ typeName))  -> (Ptr ()) -> CInt|]
+      foreignDec = forImpD CCall Unsafe (iname ++ "_add_listener") foreignName [t|$(conT $ interfaceTypeName pname iname) -> (Ptr $(conT $ typeName))  -> (Ptr ()) -> CInt|]
       apiDec :: Q [Dec]
-      apiDec = [d|$(return $ VarP $ mkName $ prettyMessageName iname "add_listener") = \ iface listener ->
+      apiDec = [d|$(varP $ requestHaskName (protocolName sp) iname "add_listener") = \ iface listener ->
                    do
                     -- malloc RAM for Listener type
                     memory <- malloc
                     -- store Listener type
                     poke memory listener
                     -- call foreign add_listener on stored Listener type
-                    return $ 0 == $(return $ VarE $ foreignName) iface memory nullPtr
+                    return $ 0 == $(varE foreignName) iface memory nullPtr
                     |]
 
       -- apiDec = [d|$(return $ VarP (mkName "bla")) listener = return|]
@@ -205,7 +195,7 @@ generateListenerExternal iface sc =
 
 
 generateListenersInternal :: ProtocolSpec -> ServerClient -> Q [Dec]
-generateListenersInternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerInternal iface sc)  $ specInterfaces sp
+generateListenersInternal sp sc = liftM concat $ sequence $ map (\iface -> generateListenerInternal iface sc)  $ protocolInterfaces sp
 
 generateClientListenersInternal sp = generateListenersInternal sp Client
 generateServerListenersInternal sp = generateListenersInternal sp Server
@@ -227,7 +217,7 @@ generateServerExternalMethods :: ProtocolSpec -> Q [Dec]
 generateServerExternalMethods ps = generateExternalMethods ps Server
 
 genMessageCType :: Message -> TypeQ
-genMessageCType = genMessageType argTypeToType
+genMessageCType = genMessageType argTypeToCType
 
 genMessageHaskType :: Message -> TypeQ
 genMessageHaskType = genMessageType argTypeToHaskType
@@ -250,3 +240,9 @@ genMessageType fun msg =
                     else [t|()|]
   in
     foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map (fun.snd3) fixedArgs)
+
+
+
+-- | 3-tuple version of snd
+snd3 :: (a,b,c) -> b
+snd3 (_,b,_) = b

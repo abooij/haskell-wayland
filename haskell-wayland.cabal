@@ -34,9 +34,10 @@ library
     Graphics.Wayland.Internal.SpliceServer,
     Graphics.Wayland.Internal.SpliceTypes,
     Graphics.Wayland.Internal.SpliceProtocol,
-    Graphics.Wayland.Scanner.Protocol,
+    Graphics.Wayland.Scanner.Marshaller,
     Graphics.Wayland.Scanner.Names,
-    Graphics.Wayland.Scanner.Marshaller
+    Graphics.Wayland.Scanner.Protocol,
+    Graphics.Wayland.Scanner.Types
   build-depends:       base >=4.7 && <4.8, xml >= 1.3 && < 1.4, process >= 1.1 && < 2, template-haskell > 2 && < 3
   --build-tools:	       c2hs   -- not supported?
   default-extensions:  ForeignFunctionInterface
