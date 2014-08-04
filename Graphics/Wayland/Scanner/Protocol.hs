@@ -26,11 +26,17 @@ value      = QName "value"      Nothing Nothing
 parseInterface :: ProtocolName -> Element -> Interface
 parseInterface pname elt =
   let iname = fromJust $ findAttr namexml elt
+
       parseMessage :: Element -> Maybe Message
       parseMessage msgelt = do -- we're gonna do some fancy construction to skip messages we can't deal with yet
         let name = fromJust $ findAttr namexml msgelt
         arguments <- mapM parseArgument (findChildren arg msgelt)
-        return Message {messageName = name, messageArguments = (iname, ObjectArg $ interfaceTypeName pname iname, False) : arguments} where
+        let destructorVal = findAttr typexml msgelt
+        let isDestructor = case destructorVal of
+                             Nothing -> False
+                             Just str -> str=="destructor"
+
+        return Message {messageName = name, messageArguments = arguments, messageIsDestructor = isDestructor} where
           parseArgument argelt = do
             let msgname = fromJust $ findAttr namexml argelt
             let argtypecode = fromJust $ findAttr typexml argelt
@@ -40,6 +46,7 @@ parseInterface pname elt =
               _ -> lookup argtypecode argConversionTable
             let allowNull = fromMaybe False (read <$> capitalize <$> findAttr allow_null argelt)
             return (msgname, argtype, allowNull)
+
       parseEnum enumelt =
         let enumname = fromJust $ findAttr namexml enumelt
             entries = map parseEntry $ findChildren entry enumelt

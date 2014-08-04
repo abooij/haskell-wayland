@@ -1,5 +1,5 @@
 module Graphics.Wayland.Internal.Util (
-  CMessage, CInterface
+  CMessage, CInterface, Client
   ) where
 
 import Data.Functor
@@ -37,4 +37,6 @@ import Foreign.C.String
 {#pointer * interface as CInterface newtype#}
 
 
--- Make a list of interfaces and messages
+
+-- opaque server-side wl_client struct
+{#pointer * client as Client#}

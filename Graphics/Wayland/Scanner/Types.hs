@@ -36,7 +36,8 @@ type Argument = (String, ArgumentType, Bool) -- name, argument type, allow-null
 type MessageName = String
 data Message = Message {
   messageName :: MessageName,
-  messageArguments :: [Argument]
+  messageArguments :: [Argument],
+  messageIsDestructor :: Bool
   } deriving (Show)
 
 type ProtocolName = String

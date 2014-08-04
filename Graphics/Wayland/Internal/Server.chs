@@ -7,10 +7,14 @@ import Foreign.C.Types
 import Foreign.C.String
 import System.Posix.Types
 
-import Graphics.Wayland.Internal.SpliceProtocol
+import Graphics.Wayland.Internal.SpliceServerInternal
 import Graphics.Wayland.Internal.SpliceServer
-import Graphics.Wayland.Internal.SpliceTypes
+import Graphics.Wayland.Internal.SpliceServerTypes
 
+
+#include <wayland-server.h>
+
+{#context prefix="wl"#}
 
 
 

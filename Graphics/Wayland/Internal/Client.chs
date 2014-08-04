@@ -16,9 +16,9 @@ import Foreign.C.Types
 import Foreign.C.String
 import System.Posix.Types
 
-import Graphics.Wayland.Internal.SpliceProtocol
+import Graphics.Wayland.Internal.SpliceClientInternal
 import Graphics.Wayland.Internal.SpliceClient
-import Graphics.Wayland.Internal.SpliceTypes
+import Graphics.Wayland.Internal.SpliceClientTypes
 
 
 #include <wayland-client.h>
