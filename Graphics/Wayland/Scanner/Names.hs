@@ -10,6 +10,7 @@ module Graphics.Wayland.Scanner.Names (
   enumTypeName, enumEntryHaskName,
   messageListenerTypeName,
   messageListenerWrapperName,
+  interfaceResourceCreator,
 
   capitalize
   ) where
@@ -22,19 +23,10 @@ import Graphics.Wayland.Scanner.Types
 
 
 
--- The functions below are a bit sad. The functions in the Wayland protocol header files are declared "static inline", meaning that they disappear after compilation.
--- Instead, we parse this file and remove exactly the static inline stuff, to get linkable variants of them. They have "x_" prepended.
 requestInternalCName :: InterfaceName -> MessageName -> Name
-requestInternalCName iface msg = mkName $ "x_" ++ iface ++ "_" ++ msg
+requestInternalCName iface msg = mkName $ iface ++ "_" ++ msg ++ "_request_binding"
 eventInternalCName :: InterfaceName -> MessageName -> Name
-eventInternalCName iface msg = mkName $ "x_" ++ iface ++ "_" ++ msg
-
-requestForeignCName :: InterfaceName -> MessageName -> String
-requestForeignCName iface msg = "x_" ++ iface ++ "_" ++ msg
-eventForeignCName :: ServerClient -> InterfaceName -> MessageName -> String
-eventForeignCName Server iface msg = "x_" ++ iface ++ "_send_" ++ msg
-eventForeignCName Client iface msg = "x_" ++ iface ++ "_" ++ msg
--- Badness ends here
+eventInternalCName iface msg = mkName $ iface ++ "_" ++ msg ++ "_event_binding"
 
 requestHaskName :: ProtocolName -> InterfaceName -> MessageName -> Name
 requestHaskName pname iname mname = mkName $ toCamel (haskifyInterfaceName pname iname ++ "_" ++ mname)
@@ -48,7 +40,7 @@ interfaceTypeName :: ProtocolName -> InterfaceName -> Name
 interfaceTypeName pname iname = mkName $ capitalize $ haskifyInterfaceName pname iname
 
 interfaceCInterfaceName :: ProtocolName -> InterfaceName -> Name
-interfaceCInterfaceName pname iname = mkName $ iname ++ "_c_interface"
+interfaceCInterfaceName _ iname = mkName $ iname ++ "_c_interface"
 
 enumTypeName :: ProtocolName -> InterfaceName -> EnumName -> Name
 enumTypeName pname iname ename = mkName $ capitalize $ haskifyInterfaceName pname iname ++ capitalize (toCamel ename)
@@ -59,7 +51,10 @@ messageListenerTypeName Client pname iname = mkName $ capitalize (haskifyInterfa
 
 messageListenerWrapperName :: ServerClient -> InterfaceName -> MessageName -> Name
 messageListenerWrapperName Client iname mname = mkName $ iname ++ "_" ++ mname ++ "_listener_wrapper"
-messageListenerWrapperName Server iname mname = mkName $ iname ++ "_" ++ mname ++ "_interface_wrapper"
+messageListenerWrapperName Server iname mname = mkName $ iname ++ "_" ++ mname ++ "_implementation_wrapper"
+
+interfaceResourceCreator :: ProtocolName -> InterfaceName -> Name
+interfaceResourceCreator pname iname = mkName $ pname ++ "_" ++ iname ++ "_resource_create"
 
 -- | Some interfaces use a naming convention where wl_ or their protocol's name is prepended.
 --   We remove both because it doesn't look very Haskelly.

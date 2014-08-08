@@ -42,7 +42,7 @@ parseInterface pname elt =
             let argtypecode = fromJust $ findAttr typexml argelt
             argtype <- case argtypecode of
               "object" -> ObjectArg . interfaceTypeName pname <$> findAttr interface argelt
-              "new_id" -> NewIdArg . interfaceTypeName pname <$> findAttr interface argelt
+              "new_id" -> (\iname -> NewIdArg (interfaceTypeName pname iname) iname) <$> findAttr interface argelt
               _ -> lookup argtypecode argConversionTable
             let allowNull = fromMaybe False (read <$> capitalize <$> findAttr allow_null argelt)
             return (msgname, argtype, allowNull)

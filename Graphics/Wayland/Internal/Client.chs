@@ -38,11 +38,11 @@ import Graphics.Wayland.Internal.SpliceClientTypes
 -- -- | struct wl_proxy pointer (generate type since this is not an interface)
 -- {#pointer * proxy as Proxy newtype#}
 
--- | struct wl_event_queue pointer (ditto)
+-- | struct wl_event_queue pointer (generate type since this is not an interface)
 {#pointer * event_queue as EventQueue newtype#}
 
--- | struct wl_interface pointer. for internal use only. (proxy typing)
-{#pointer * interface as Interface newtype#}
+-- -- | struct wl_interface pointer. for internal use only. (proxy typing)
+-- {#pointer * interface as Interface newtype#}
 
 -- TODO list interfaces etc blabla
 

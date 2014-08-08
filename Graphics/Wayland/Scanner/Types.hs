@@ -22,7 +22,7 @@ data WLEnum = WLEnum {
   } deriving (Show)
 
 -- | wayland wire protocol argument type. we can't deal with untyped object/new-id arguments.
-data ArgumentType = IntArg | UIntArg | FixedArg | StringArg | ObjectArg Name | NewIdArg Name | ArrayArg | FdArg deriving (Show)
+data ArgumentType = IntArg | UIntArg | FixedArg | StringArg | ObjectArg Name | NewIdArg Name MessageName | ArrayArg | FdArg deriving (Show)
 argConversionTable :: [(String, ArgumentType)] -- for all easy argument types
 argConversionTable = [
   ("int", IntArg),

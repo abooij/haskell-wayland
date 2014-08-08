@@ -31,7 +31,7 @@ argTypeToCType (_,UIntArg,_) = [t| {#type uint32_t#} |]
 argTypeToCType (_,FixedArg,_) = [t|{#type fixed_t#}|]
 argTypeToCType (_,StringArg,_) = [t| Ptr CChar |]
 argTypeToCType (_,(ObjectArg iname),_) = return $ ConT iname
-argTypeToCType (_,(NewIdArg iname),_) = return $ ConT iname
+argTypeToCType (_,(NewIdArg iname _),_) = return $ ConT iname
 argTypeToCType (_,ArrayArg,_) = undefined
 argTypeToCType (_,FdArg,_) = [t| {#type int32_t#} |]
 
@@ -41,15 +41,15 @@ argTypeToHaskType (_,UIntArg,_) = [t|Word|]
 argTypeToHaskType (_,FixedArg,_) = [t|Int|] -- FIXME double conversion!!
 argTypeToHaskType (_,StringArg,False) = [t|String|]
 argTypeToHaskType (_,(ObjectArg iname),False) = return $ ConT iname
-argTypeToHaskType (_,(NewIdArg iname),False) = return $ ConT iname
+argTypeToHaskType (_,(NewIdArg iname _),False) = return $ ConT iname
 argTypeToHaskType (_,StringArg,True) = [t|Maybe String|]
 argTypeToHaskType (_,(ObjectArg iname),True) = [t|Maybe $(conT iname) |]
-argTypeToHaskType (_,(NewIdArg iname),True) = [t|Maybe $(conT iname) |]
+argTypeToHaskType (_,(NewIdArg iname _),True) = [t|Maybe $(conT iname) |]
 argTypeToHaskType (_,ArrayArg,_) = undefined
 argTypeToHaskType (_,FdArg,_) = [t|Fd|]
 
 argTypeToWeirdInterfaceCType :: Argument -> TypeQ
-argTypeToWeirdInterfaceCType (_,(NewIdArg iname),_) = [t|{#type uint32_t#}|]
+argTypeToWeirdInterfaceCType (_,(NewIdArg iname _),_) = [t|{#type uint32_t#}|]
 argTypeToWeirdInterfaceCType x = argTypeToCType x
 
 marshallerVar :: Argument -> Name
@@ -66,7 +66,7 @@ argTypeMarshaller args fun =
       applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int))|]) |] -- FIXME double conversion stuff!
       applyMarshaller (arg@(_, StringArg, False):as) fun = [|withCString $(mk arg) (\cstr -> $(applyMarshaller as [|$fun cstr|]))|]
       applyMarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyMarshaller (arg@(_, (NewIdArg iname), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyMarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
       applyMarshaller (arg@(_, StringArg, True):as) fun = [|
            case $(mk arg) of
              Nothing  -> $(applyMarshaller as [|$fun nullPtr|])
@@ -77,7 +77,7 @@ argTypeMarshaller args fun =
              Nothing  -> $(applyMarshaller as [|$fun ($(conE iname) nullPtr)|])
              Just obj -> $(applyMarshaller as [|$fun obj|])
            |]
-      applyMarshaller (arg@(_, (NewIdArg iname), True):as) fun = [|
+      applyMarshaller (arg@(_, (NewIdArg iname _), True):as) fun = [|
            case $(mk arg) of
              Nothing  -> $(applyMarshaller as [|$fun ($(conE iname) nullPtr)|])
              Just obj -> $(applyMarshaller as [|$fun obj|])
@@ -100,7 +100,7 @@ argTypeUnmarshaller args fun =
       applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt))|]) |] -- FIXME double conversion stuff!
       applyUnmarshaller (arg@(_, StringArg, False):as) fun = [|do str <- peekCString $(mk arg); $(applyUnmarshaller as [|$fun str|])|]
       applyUnmarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyUnmarshaller (arg@(_, (NewIdArg iname), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyUnmarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
       applyUnmarshaller (arg@(_, StringArg, True):as) fun = [|do
                str <- if $(mk arg) == nullPtr
                          then return Nothing
@@ -108,13 +108,14 @@ argTypeUnmarshaller args fun =
                $(applyUnmarshaller as [|$fun str|])
                |]
       applyUnmarshaller (arg@(_, (ObjectArg iname), True):as) fun = [|$(applyUnmarshaller as [|$fun $
+               let $(conP iname ([varP $ mkName "ptr___"])) = $(mk arg)
+               in if $(varE $ mkName "ptr___") == nullPtr
+                   then Nothing
+                   else Just $(mk arg)|]) |]
+      applyUnmarshaller (arg@(_, (NewIdArg iname _), True):as) fun = [|$(applyUnmarshaller as [|$fun $
                if $(mk arg) == nullPtr
                   then Nothing
-                  else Just $(mk arg)|]) |]
-      applyUnmarshaller (arg@(_, (NewIdArg iname), True):as) fun = [|$(applyUnmarshaller as [|$fun $
-               if $(mk arg) == nullPtr
-                  then Nothing
-                  else Just $(mk arg)|]) |]
+                  else Just $ $(conE iname) $(mk arg)|]) |]
       applyUnmarshaller (arg@(_, ArrayArg, _):as) fun = undefined
       applyUnmarshaller (arg@(_, FdArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (Fd ($(mk arg)))|]) |]
       applyUnmarshaller [] fun = fun
