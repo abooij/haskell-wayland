@@ -1,7 +1,10 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Graphics.Wayland.Internal.Util (
-  CMessage, CInterface, Client
+  CInterface, Client(..), Fixed256, Precision256
   ) where
 
+import Data.Fixed (Fixed(..), HasResolution(..))
+import Data.Typeable
 import Data.Functor
 import Foreign
 import Foreign.C.Types
@@ -13,30 +16,19 @@ import Foreign.C.String
 {#context prefix="wl"#}
 
 
--- Data types
--- struct wl_message {
---         const char *name;
---         const char *signature;
---         const struct wl_interface **types;
--- };
--- | struct wl_message pointer
-{#pointer * message as CMessage newtype#}
--- messageName msg = unsafePerformIO $ peekCString <$> {#get message->name#} msg
--- messageSignature msg = unsafePerformIO $ peekCString <$> {#get message->signature#} msg
--- messageInterface msg = unsafePerformIO
-
--- struct wl_interface {
---         const char *name;
---         int version;
---         int method_count;
---         const struct wl_message *methods;
---         int event_count;
---         const struct wl_message *events;
--- };
 -- | struct wl_interface pointer
 {#pointer * interface as CInterface newtype#}
 
 
 
--- opaque server-side wl_client struct
-{#pointer * client as Client#}
+-- | opaque server-side wl_client struct
+newtype Client = Client (Ptr Client) deriving (Eq)
+
+-- | 8 bits of precision means a resolution of 256.
+data Precision256 = Precision256 deriving (Typeable)
+instance HasResolution Precision256 where
+  resolution _ = 256
+-- | Fixed point number with 8 bits of decimal precision.
+--
+--   The equivalent of wayland's wl_fixed_t.
+type Fixed256 = Fixed Precision256

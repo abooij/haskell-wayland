@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, DeriveDataTypeable #-}
 module Graphics.Wayland.Scanner.Marshaller (
   argTypeToCType, argTypeToHaskType, argTypeToWeirdInterfaceCType,
 
@@ -8,6 +8,7 @@ module Graphics.Wayland.Scanner.Marshaller (
   ) where
 
 import Data.Functor
+import Data.Fixed (Fixed(..))
 import Foreign
 import Foreign.C.Types
 import Foreign.C.String
@@ -16,6 +17,7 @@ import System.IO
 import System.Posix.Types
 import Language.Haskell.TH
 
+import Graphics.Wayland.Internal.Util (Fixed256)
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner.Names
 import Graphics.Wayland.Scanner.Types
@@ -24,6 +26,11 @@ import Graphics.Wayland.Scanner.Types
 
 {#context prefix="wl"#}
 
+
+wlFixedToFixed256 :: CInt -> Fixed256
+wlFixedToFixed256 = MkFixed . fromIntegral
+fixed256ToWlFixed :: Fixed256 -> CInt
+fixed256ToWlFixed (MkFixed a) = fromIntegral a
 
 argTypeToCType :: Argument -> TypeQ
 argTypeToCType (_,IntArg,_) = [t| {#type int32_t#} |]
@@ -38,7 +45,7 @@ argTypeToCType (_,FdArg,_) = [t| {#type int32_t#} |]
 argTypeToHaskType :: Argument -> TypeQ
 argTypeToHaskType (_,IntArg,_) = [t|Int|]
 argTypeToHaskType (_,UIntArg,_) = [t|Word|]
-argTypeToHaskType (_,FixedArg,_) = [t|Int|] -- FIXME double conversion!!
+argTypeToHaskType (_,FixedArg,_) = [t|Fixed256|]
 argTypeToHaskType (_,StringArg,False) = [t|String|]
 argTypeToHaskType (_,(ObjectArg iname),False) = return $ ConT iname
 argTypeToHaskType (_,(NewIdArg iname _),False) = return $ ConT iname
@@ -63,10 +70,10 @@ argTypeMarshaller args fun =
       applyMarshaller :: [Argument] -> ExpQ -> ExpQ
       applyMarshaller (arg@(_, IntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int) )|])|]
       applyMarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Word))|]) |]
-      applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int))|]) |] -- FIXME double conversion stuff!
+      applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fixed256ToWlFixed $(mk arg))|]) |] -- FIXME float conversion stuff!
       applyMarshaller (arg@(_, StringArg, False):as) fun = [|withCString $(mk arg) (\cstr -> $(applyMarshaller as [|$fun cstr|]))|]
-      applyMarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyMarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyMarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |]
+      applyMarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg) |])|]
       applyMarshaller (arg@(_, StringArg, True):as) fun = [|
            case $(mk arg) of
              Nothing  -> $(applyMarshaller as [|$fun nullPtr|])
@@ -97,10 +104,10 @@ argTypeUnmarshaller args fun =
       applyUnmarshaller :: [Argument] -> ExpQ -> ExpQ
       applyUnmarshaller (arg@(_, IntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt) )|])|]
       applyUnmarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CUInt))|]) |]
-      applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt))|]) |] -- FIXME double conversion stuff!
+      applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (wlFixedToFixed256 $(mk arg))|]) |] -- FIXME float conversion stuff!
       applyUnmarshaller (arg@(_, StringArg, False):as) fun = [|do str <- peekCString $(mk arg); $(applyUnmarshaller as [|$fun str|])|]
-      applyUnmarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |] -- FIXME Maybe
-      applyUnmarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|] -- FIXME Maybe
+      applyUnmarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |]
+      applyUnmarshaller (arg@(_, (NewIdArg iname _), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg) |])|]
       applyUnmarshaller (arg@(_, StringArg, True):as) fun = [|do
                str <- if $(mk arg) == nullPtr
                          then return Nothing

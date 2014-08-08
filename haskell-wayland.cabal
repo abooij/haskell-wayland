@@ -58,9 +58,10 @@ library
     wayland-client-protocol.h,
     wayland-server-protocol.h,
     wayland-util.h,
-    wayland-version.h
-  c-sources: cbits/wayland.c
+    wayland-version.h,
+    wayland-egl.h
 
+-- FIXME: this tests assumes there's a wayland server (e.g. weston) running.
 test-suite firsttest
   hs-source-dirs: tests
   type: exitcode-stdio-1.0

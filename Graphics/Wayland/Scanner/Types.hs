@@ -2,6 +2,7 @@ module Graphics.Wayland.Scanner.Types where
 
 import Language.Haskell.TH (Name)
 
+
 data ServerClient = Server | Client  deriving (Eq)
 
 -- | wayland-style interface name (e.g. wl_display)
