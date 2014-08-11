@@ -1,10 +1,14 @@
 module Graphics.Wayland (
-  version, Fixed256, Precision256
-  -- module Graphics.Wayland.Client,
-  -- module Graphics.Wayland.Server,
+  version, Fixed256, Precision256, Result(..), errToResult
    ) where
 
-import Graphics.Wayland.Client
-import Graphics.Wayland.Server
+import Foreign.C.Types
+
 import Graphics.Wayland.Internal.Util
 import Graphics.Wayland.Internal.Version
+
+
+data Result = Success | Failure deriving (Eq, Show)
+errToResult :: CInt -> Result
+errToResult 0    = Success
+errToResult (-1) = Failure

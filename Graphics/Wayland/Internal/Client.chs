@@ -1,14 +1,12 @@
 module Graphics.Wayland.Internal.Client (
-  EventQueue, Result(..),
-
-  eventQueueDestroy,
+  Result(..),
 
   displayConnect, displayConnectName, displayConnectFd, displayDisconnect, displayGetFd,
-  displayDispatch, displayDispatchPending, displayDispatchQueue, displayDispatchQueuePending,
+  displayDispatch, displayDispatchPending,
 
   displayGetError, displayFlush, displayRoundtrip,
 
-  displayCreateQueue, displayPrepareRead, displayPrepareReadQueue, displayCancelRead, displayReadEvents
+  displayPrepareRead, displayCancelRead, displayReadEvents
   ) where
 
 import Foreign
@@ -19,6 +17,7 @@ import System.Posix.Types
 import Graphics.Wayland.Internal.SpliceClientInternal
 import Graphics.Wayland.Internal.SpliceClient
 import Graphics.Wayland.Internal.SpliceClientTypes
+import Graphics.Wayland
 
 
 #include <wayland-client.h>
@@ -38,8 +37,8 @@ import Graphics.Wayland.Internal.SpliceClientTypes
 -- -- | struct wl_proxy pointer (generate type since this is not an interface)
 -- {#pointer * proxy as Proxy newtype#}
 
--- | struct wl_event_queue pointer (generate type since this is not an interface)
-{#pointer * event_queue as EventQueue newtype#}
+-- -- | struct wl_event_queue pointer (generate type since this is not an interface)
+-- {#pointer * event_queue as EventQueue newtype#}
 
 -- -- | struct wl_interface pointer. for internal use only. (proxy typing)
 -- {#pointer * interface as Interface newtype#}
@@ -51,8 +50,8 @@ import Graphics.Wayland.Internal.SpliceClientTypes
 -- Functions/methods
 
 
--- void wl_event_queue_destroy(struct wl_event_queue *queue);
-{#fun unsafe event_queue_destroy as ^ {`EventQueue'} -> `()'#}
+-- -- void wl_event_queue_destroy(struct wl_event_queue *queue);
+-- {#fun unsafe event_queue_destroy as ^ {`EventQueue'} -> `()'#}
 
 -- void wl_proxy_marshal(struct wl_proxy *p, uint32_t opcode, ...);
 
@@ -82,8 +81,6 @@ import Graphics.Wayland.Internal.SpliceClientTypes
 -- void *wl_proxy_get_user_data(struct wl_proxy *proxy);
 -- uint32_t wl_proxy_get_id(struct wl_proxy *proxy);
 -- const char *wl_proxy_get_class(struct wl_proxy *proxy);
-
--- TODO This is the only wl_proxy function we need to bind (for the various interfaces)
 -- void wl_proxy_set_queue(struct wl_proxy *proxy, struct wl_event_queue *queue);
 
 
@@ -122,19 +119,19 @@ codeNeg1ToNothing = codeToNothing (-1) . fromIntegral
 code0ToNothing    :: CInt -> Maybe Int
 code0ToNothing    = codeToNothing 0    . fromIntegral
 
--- int wl_display_dispatch_queue(struct wl_display *display,
---                               struct wl_event_queue *queue);
--- | wl_display_dispatch_queue. Returns @Nothing@ on failure or @Just k@ if k events were processed.
---
--- Strictly safe!!! This *will* call back into Haskell code!
-{#fun display_dispatch_queue as displayDispatchQueue {`Display', `EventQueue'} -> `Maybe Int' codeNeg1ToNothing #}
+-- -- int wl_display_dispatch_queue(struct wl_display *display,
+-- --                               struct wl_event_queue *queue);
+-- -- | wl_display_dispatch_queue. Returns @Nothing@ on failure or @Just k@ if k events were processed.
+-- --
+-- -- Strictly safe!!! This *will* call back into Haskell code!
+-- {#fun display_dispatch_queue as displayDispatchQueue {`Display', `EventQueue'} -> `Maybe Int' codeNeg1ToNothing #}
 
--- int wl_display_dispatch_queue_pending(struct wl_display *display,
---                                       struct wl_event_queue *queue);
--- | wl_display_dispatch_queue_pending. Returns @Nothing@ on failure or @Just k@ if k events were processed.
---
--- Strictly safe!!! This *will* call back into Haskell code!
-{#fun display_dispatch_queue_pending as displayDispatchQueuePending {`Display', `EventQueue'} -> `Maybe Int' codeNeg1ToNothing #}
+-- -- int wl_display_dispatch_queue_pending(struct wl_display *display,
+-- --                                       struct wl_event_queue *queue);
+-- -- | wl_display_dispatch_queue_pending. Returns @Nothing@ on failure or @Just k@ if k events were processed.
+-- --
+-- -- Strictly safe!!! This *will* call back into Haskell code!
+-- {#fun display_dispatch_queue_pending as displayDispatchQueuePending {`Display', `EventQueue'} -> `Maybe Int' codeNeg1ToNothing #}
 
 -- int wl_display_dispatch_pending(struct wl_display *display);
 -- | wl_display_dispatch_pending. Returns @Nothing@ on failure or @Just k@ if k events were processed.
@@ -160,17 +157,13 @@ code0ToNothing    = codeToNothing 0    . fromIntegral
 -- __It is not clear to me if this is can be unsafe (ie. can this call back into haskell code?).__
 {#fun display_roundtrip as displayRoundtrip {`Display'} -> `Maybe Int' codeNeg1ToNothing #}
 
--- struct wl_event_queue *wl_display_create_queue(struct wl_display *display);
--- | Docs say that wl_display_create_queue may return NULL on failure, but that only happens when it's out of memory
-{#fun unsafe display_create_queue as displayCreateQueue {`Display'} -> `EventQueue' #}
+-- -- struct wl_event_queue *wl_display_create_queue(struct wl_display *display);
+-- -- | Docs say that wl_display_create_queue may return NULL on failure, but that only happens when it's out of memory
+-- {#fun unsafe display_create_queue as displayCreateQueue {`Display'} -> `EventQueue' #}
 
--- int wl_display_prepare_read_queue(struct wl_display *display,
---                                   struct wl_event_queue *queue);
-data Result = Success | Failure
-errToResult :: CInt -> Result
-errToResult 0    = Success
-errToResult (-1) = Failure
-{#fun unsafe display_prepare_read_queue as displayPrepareReadQueue {`Display', `EventQueue'} -> `Result' errToResult #}
+-- -- int wl_display_prepare_read_queue(struct wl_display *display,
+-- --                                   struct wl_event_queue *queue);
+-- {#fun unsafe display_prepare_read_queue as displayPrepareReadQueue {`Display', `EventQueue'} -> `Result' errToResult #}
 
 -- int wl_display_prepare_read(struct wl_display *display);
 {#fun unsafe display_prepare_read as displayPrepareRead {`Display'} -> `Result' errToResult #}

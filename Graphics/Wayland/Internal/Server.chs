@@ -1,7 +1,20 @@
 module Graphics.Wayland.Internal.Server (
+  EventLoop, EventSource,
 
+  EventLoopFdFunc, EventLoopTimerFunc, EventLoopSignalFunc, EventLoopIdleFunc,
+
+  eventLoopCreate, eventLoopDestroy, eventLoopAddFd, eventSourceFdUpdate,
+  eventLoopAddTimer, eventLoopAddSignal, eventSourceTimerUpdate, eventSourceRemove,
+  eventSourceCheck, eventLoopDispatch, eventLoopDispatchIdle, eventLoopAddIdle, eventLoopGetFd,
+
+  DisplayServer, displayCreate, displayDestroy, displayGetEventLoop, displayAddSocket,
+  displayTerminate, displayRun, displayFlushClients, displayGetSerial, displayNextSerial,
+
+  clientCreate, clientDestroy, clientFlush, clientGetCredentials, clientPostNoMemory
   ) where
 
+import Control.Monad (liftM)
+import Data.Functor ((<$>))
 import Foreign
 import Foreign.C.Types
 import Foreign.C.String
@@ -9,7 +22,8 @@ import System.Posix.Types
 
 import Graphics.Wayland.Internal.SpliceServerInternal
 import Graphics.Wayland.Internal.SpliceServer
-import Graphics.Wayland.Internal.SpliceServerTypes
+import Graphics.Wayland.Internal.Util (Client(..))
+import Graphics.Wayland
 
 
 #include <wayland-server.h>
@@ -25,68 +39,182 @@ import Graphics.Wayland.Internal.SpliceServerTypes
 -- 	WL_EVENT_ERROR    = 0x08
 -- };
 
--- struct wl_event_loop;
--- struct wl_event_source;
--- typedef int (*wl_event_loop_fd_func_t)(int fd, uint32_t mask, void *data);
--- typedef int (*wl_event_loop_timer_func_t)(void *data);
--- typedef int (*wl_event_loop_signal_func_t)(int signal_number, void *data);
--- typedef void (*wl_event_loop_idle_func_t)(void *data);
 
--- struct wl_event_loop *wl_event_loop_create(void);
--- void wl_event_loop_destroy(struct wl_event_loop *loop);
--- struct wl_event_source *wl_event_loop_add_fd(struct wl_event_loop *loop,
+boolToCInt :: Bool -> CInt
+boolToCInt True = 1
+boolToCInt False = 0
+
+
+
+unFd :: Fd -> CInt
+unFd (Fd n) = n
+
+makeWith :: (a -> IO b) -> (a -> (b -> IO c) -> IO c)
+makeWith func = \ a f -> do
+  b <- func a
+  f b
+
+makeWith' :: b -> (b -> IO c) -> IO c
+makeWith' b f = f b
+
+withNullPtr = makeWith' nullPtr
+
+-- struct wl_event_loop;
+{#pointer * event_loop as EventLoop newtype#}
+
+-- struct wl_event_source;
+{#pointer * event_source as EventSource newtype#}
+
+-- typedef int (*wl_event_loop_fd_func_t)(int fd, uint32_t mask, void *data);
+type CEventLoopFdFunc = CInt -> {#type uint32_t#} -> Ptr () -> IO CInt
+type EventLoopFdFunc = Int -> Word -> IO Bool
+foreign import ccall unsafe "wrapper" makeFdFunPtr :: CEventLoopFdFunc -> IO (FunPtr CEventLoopFdFunc)
+marshallEventLoopFdFunc :: EventLoopFdFunc -> IO (FunPtr CEventLoopFdFunc)
+marshallEventLoopFdFunc func = makeFdFunPtr $ \ fd mask _ -> boolToCInt <$> func (fromIntegral fd) (fromIntegral mask)
+melff = makeWith marshallEventLoopFdFunc
+
+-- typedef int (*wl_event_loop_timer_func_t)(void *data);
+type CEventLoopTimerFunc = Ptr () -> IO CInt
+type EventLoopTimerFunc = IO Bool
+foreign import ccall unsafe "wrapper" makeTimerFunPtr :: CEventLoopTimerFunc -> IO (FunPtr CEventLoopTimerFunc)
+marshallEventLoopTimerFunc :: EventLoopTimerFunc -> IO (FunPtr CEventLoopTimerFunc)
+marshallEventLoopTimerFunc func = makeTimerFunPtr $ \ _ -> boolToCInt <$> func
+meltf = makeWith marshallEventLoopTimerFunc
+
+-- typedef int (*wl_event_loop_signal_func_t)(int signal_number, void *data);
+type CEventLoopSignalFunc = CInt -> Ptr () -> IO CInt
+type EventLoopSignalFunc = Int -> IO Bool
+foreign import ccall unsafe "wrapper" makeSignalFunPtr :: CEventLoopSignalFunc -> IO (FunPtr CEventLoopSignalFunc)
+marshallEventLoopSignalFunc :: EventLoopSignalFunc -> IO (FunPtr CEventLoopSignalFunc)
+marshallEventLoopSignalFunc func = makeSignalFunPtr $ \ x _ -> boolToCInt <$> func (fromIntegral x)
+melsf = makeWith marshallEventLoopSignalFunc
+
+-- typedef void (*wl_event_loop_idle_func_t)(void *data);
+type CEventLoopIdleFunc = Ptr () -> IO ()
+type EventLoopIdleFunc = IO ()
+foreign import ccall unsafe "wrapper" makeIdleFunPtr :: CEventLoopIdleFunc -> IO (FunPtr CEventLoopIdleFunc)
+marshallEventLoopIdleFunc :: EventLoopIdleFunc -> IO (FunPtr CEventLoopIdleFunc)
+marshallEventLoopIdleFunc func = makeIdleFunPtr $ \ _ -> func
+melif = makeWith marshallEventLoopIdleFunc
+
+-- |struct wl_event_loop *wl_event_loop_create(void);
+{#fun unsafe event_loop_create as eventLoopCreate {} -> `EventLoop' #}
+
+-- |void wl_event_loop_destroy(struct wl_event_loop *loop);
+{#fun unsafe event_loop_destroy as eventLoopDestroy {`EventLoop'} -> `()' #}
+
+-- | struct wl_event_source *wl_event_loop_add_fd(struct wl_event_loop *loop,
 -- 					     int fd, uint32_t mask,
 -- 					     wl_event_loop_fd_func_t func,
 -- 					     void *data);
--- int wl_event_source_fd_update(struct wl_event_source *source, uint32_t mask);
--- struct wl_event_source *wl_event_loop_add_timer(struct wl_event_loop *loop,
+--
+-- FIXME is mask a bitmask?
+{#fun unsafe event_loop_add_fd as eventLoopAddFd {`EventLoop', unFd `Fd', fromIntegral `Word', melff* `EventLoopFdFunc', withNullPtr- `Ptr ()'} -> `EventSource' #}
+
+-- | int wl_event_source_fd_update(struct wl_event_source *source, uint32_t mask);
+--
+-- FIXME is mask a bitmask?
+{#fun unsafe event_source_fd_update as eventSourceFdUpdate {`EventSource', fromIntegral `Word'} -> `Result' errToResult #}
+
+-- | struct wl_event_source *wl_event_loop_add_timer(struct wl_event_loop *loop,
 -- 						wl_event_loop_timer_func_t func,
 -- 						void *data);
--- struct wl_event_source *
+{#fun unsafe event_loop_add_timer as eventLoopAddTimer {`EventLoop', meltf* `EventLoopTimerFunc', withNullPtr- `Ptr ()'} -> `EventSource'#}
+
+-- | struct wl_event_source *
 -- wl_event_loop_add_signal(struct wl_event_loop *loop,
 -- 			int signal_number,
 -- 			wl_event_loop_signal_func_t func,
 -- 			void *data);
+{#fun unsafe event_loop_add_signal as eventLoopAddSignal {`EventLoop', `Int', melsf* `EventLoopSignalFunc', withNullPtr- `Ptr ()'} -> `EventSource' #}
 
--- int wl_event_source_timer_update(struct wl_event_source *source,
+-- | int wl_event_source_timer_update(struct wl_event_source *source,
 -- 				 int ms_delay);
--- int wl_event_source_remove(struct wl_event_source *source);
--- void wl_event_source_check(struct wl_event_source *source);
+{#fun unsafe event_source_timer_update as eventSourceTimerUpdate {`EventSource', `Int'} -> `Result' errToResult #}
 
+-- | int wl_event_source_remove(struct wl_event_source *source);
+{#fun unsafe event_source_remove as eventSourceRemove {`EventSource'} -> `()' #}
 
--- int wl_event_loop_dispatch(struct wl_event_loop *loop, int timeout);
--- void wl_event_loop_dispatch_idle(struct wl_event_loop *loop);
--- struct wl_event_source *wl_event_loop_add_idle(struct wl_event_loop *loop,
+-- | void wl_event_source_check(struct wl_event_source *source);
+{#fun unsafe event_source_check as eventSourceCheck {`EventSource'} -> `()' #}
+
+-- | int wl_event_loop_dispatch(struct wl_event_loop *loop, int timeout);
+--
+-- SAFE!!
+{#fun event_loop_dispatch as eventLoopDispatch {`EventLoop', `Int'} -> `Result' errToResult#}
+
+-- | void wl_event_loop_dispatch_idle(struct wl_event_loop *loop);
+{#fun event_loop_dispatch_idle as eventLoopDispatchIdle {`EventLoop'} -> `()' #}
+
+-- | struct wl_event_source *wl_event_loop_add_idle(struct wl_event_loop *loop,
 -- 					       wl_event_loop_idle_func_t func,
 -- 					       void *data);
--- int wl_event_loop_get_fd(struct wl_event_loop *loop);
+{#fun event_loop_add_idle as eventLoopAddIdle {`EventLoop', melif* `EventLoopIdleFunc', withNullPtr- `Ptr ()'} -> `EventSource' #}
+
+-- | int wl_event_loop_get_fd(struct wl_event_loop *loop);
+{#fun unsafe event_loop_get_fd as eventLoopGetFd {`EventLoop'} -> `Fd' Fd #}
+
+
+-- EXPOSED UNTIL HERE
+
 
 -- struct wl_client;
--- struct wl_display;
+-- defined in .Util
+{#pointer * client as Client newtype nocode#}
+
+-- |struct wl_display;
+--
+-- this is called a Compositor in e.g weston, QtWayland
+--
+-- this is NOT an instance of a wl_resource or a wl_proxy! it is a global server status singleton listing e.g. connected clients.
+{#pointer * display as DisplayServer newtype #}
+
 -- struct wl_listener;
 -- struct wl_resource;
 -- struct wl_global;
--- typedef void (*wl_notify_func_t)(struct wl_listener *listener, void *data);
 
+-- typedef void (*wl_notify_func_t)(struct wl_listener *listener, void *data);
 -- void wl_event_loop_add_destroy_listener(struct wl_event_loop *loop,
 -- 					struct wl_listener * listener);
 -- struct wl_listener *wl_event_loop_get_destroy_listener(
 -- 					struct wl_event_loop *loop,
 -- 					wl_notify_func_t notify);
 
--- struct wl_display *wl_display_create(void);
--- void wl_display_destroy(struct wl_display *display);
--- struct wl_event_loop *wl_display_get_event_loop(struct wl_display *display);
--- int wl_display_add_socket(struct wl_display *display, const char *name);
--- void wl_display_terminate(struct wl_display *display);
--- void wl_display_run(struct wl_display *display);
--- void wl_display_flush_clients(struct wl_display *display);
+-- | struct wl_display *wl_display_create(void);
+{#fun unsafe display_create as displayCreate {} -> `DisplayServer' #}
+
+-- | void wl_display_destroy(struct wl_display *display);
+{#fun unsafe display_destroy as displayDestroy {`DisplayServer'} -> `()' #}
+
+-- | struct wl_event_loop *wl_display_get_event_loop(struct wl_display *display);
+{#fun unsafe display_get_event_loop as displayGetEventLoop {`DisplayServer'} -> `EventLoop' #}
+
+-- | int wl_display_add_socket(struct wl_display *display, const char *name);
+withMaybeCString :: Maybe String -> (CString -> IO a) -> IO a
+withMaybeCString Nothing fun = fun nullPtr
+withMaybeCString (Just str) fun = withCString str fun
+{#fun unsafe display_add_socket as displayAddSocket {`DisplayServer', withMaybeCString* `Maybe String'} -> `Result' errToResult #}
+
+-- | void wl_display_terminate(struct wl_display *display);
+{#fun unsafe display_terminate as displayTerminate {`DisplayServer'} -> `()' #}
+
+-- | void wl_display_run(struct wl_display *display);
+--
+-- STRICTLY SAFE!!!
+{#fun display_run as displayRun {`DisplayServer'} -> `()' #}
+
+-- | void wl_display_flush_clients(struct wl_display *display);
+{#fun display_flush_clients as displayFlushClients {`DisplayServer'} -> `()' #}
 
 -- typedef void (*wl_global_bind_func_t)(struct wl_client *client, void *data,
 -- 				      uint32_t version, uint32_t id);
 
--- uint32_t wl_display_get_serial(struct wl_display *display);
--- uint32_t wl_display_next_serial(struct wl_display *display);
+-- not sure what these two functions are for
+-- | uint32_t wl_display_get_serial(struct wl_display *display);
+{#fun unsafe display_get_serial as displayGetSerial {`DisplayServer'} -> `Word' fromIntegral #}
+
+-- | uint32_t wl_display_next_serial(struct wl_display *display);
+{#fun unsafe display_next_serial as displayNextSerial {`DisplayServer'} -> `Word' fromIntegral #}
 
 -- void wl_display_add_destroy_listener(struct wl_display *display,
 -- 				     struct wl_listener *listener);
@@ -99,21 +227,33 @@ import Graphics.Wayland.Internal.SpliceServerTypes
 -- 				   void *data, wl_global_bind_func_t bind);
 -- void wl_global_destroy(struct wl_global *global);
 
--- struct wl_client *wl_client_create(struct wl_display *display, int fd);
--- void wl_client_destroy(struct wl_client *client);
--- void wl_client_flush(struct wl_client *client);
--- void wl_client_get_credentials(struct wl_client *client,
+-- | struct wl_client *wl_client_create(struct wl_display *display, int fd);
+{#fun unsafe client_create as clientCreate {`DisplayServer', unFd `Fd'} -> `Client' #}
+
+-- | void wl_client_destroy(struct wl_client *client);
+{#fun unsafe client_destroy as clientDestroy {`Client'} -> `()' #}
+
+-- | void wl_client_flush(struct wl_client *client);
+{#fun unsafe client_flush as clientFlush {`Client'} -> `()' #}
+
+peekPid = liftM CPid . liftM fromIntegral . peek
+peekUid = liftM CUid . liftM fromIntegral . peek
+peekGid = liftM CGid . liftM fromIntegral . peek
+-- | void wl_client_get_credentials(struct wl_client *client,
 -- 			       pid_t *pid, uid_t *uid, gid_t *gid);
+{#fun unsafe client_get_credentials as clientGetCredentials {`Client', alloca- `ProcessID' peekPid*, alloca- `UserID' peekUid*, alloca- `GroupID' peekGid*} -> `()' #}
 
 -- void wl_client_add_destroy_listener(struct wl_client *client,
 -- 				    struct wl_listener *listener);
 -- struct wl_listener *wl_client_get_destroy_listener(struct wl_client *client,
 -- 						   wl_notify_func_t notify);
 
+-- this function should not be needed
 -- struct wl_resource *
 -- wl_client_get_object(struct wl_client *client, uint32_t id);
 -- void
--- wl_client_post_no_memory(struct wl_client *client);
+-- | wl_client_post_no_memory(struct wl_client *client);
+{#fun unsafe client_post_no_memory as clientPostNoMemory {`Client'} -> `()' #}
 
 -- /** \class wl_listener
 --  *
@@ -347,6 +487,9 @@ import Graphics.Wayland.Internal.SpliceServerTypes
 -- 	     wl_resource_get_link(resource) != (list);				\
 -- 	     resource = tmp,							\
 -- 	     tmp = wl_resource_from_link(wl_resource_get_link(resource)->next))
+
+
+-- TODO bind the stuff below
 
 -- struct wl_shm_buffer;
 
