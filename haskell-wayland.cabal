@@ -75,3 +75,9 @@ test-suite enumtest
   main-is: enums.hs
   build-depends: base, haskell-wayland, xml, process
   default-language:    Haskell2010
+
+executable wayland-list-globals
+  hs-source-dirs: tests
+  main-is: listglobals.hs
+  build-depends: base, haskell-wayland
+  default-language: Haskell2010

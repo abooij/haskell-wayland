@@ -138,7 +138,10 @@ generateMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter
               let isDestructor = undefined
                   numNewIds = sum $ map (boolToInt . isNewId) $ messageArguments msg
                   argsWithoutNewId = filter (\arg -> not $ isNewId arg) (messageArguments msg)
-                  returnType = [t|IO $(argTypeToCType $ head $ filter (\arg -> isNewId arg) (messageArguments msg))|]
+                  returnArgument = head $ filter (\arg -> isNewId arg) (messageArguments msg)
+                  returnName = let (_, NewIdArg _ theName, _) = returnArgument
+                               in theName
+                  returnType = [t|IO $(argTypeToCType returnArgument)|]
               cdec <- case numNewIds of
                         -- void wl_proxy_marshal(struct wl_proxy *proxy, uint32_t opcode, ...)
                         0 -> forImpD cCall unsafe "wl_proxy_marshal" internalCName [t|$(conT $ interfaceTypeName (protocolName ps) (interfaceName iface)) -> {#type uint32_t#} -> $(genMessageCType Nothing (messageArguments msg)) |]
@@ -150,7 +153,7 @@ generateMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter
               let messageIndexApplied = applyAtPosition (varE internalCName) (litE $ IntegerL $ fromIntegral idx) 1
                   constructorApplied = case numNewIds of
                                          0 -> messageIndexApplied
-                                         1 -> applyAtPosition messageIndexApplied (varE $ interfaceCInterfaceName pname iname) 1
+                                         1 -> applyAtPosition messageIndexApplied (varE $ interfaceCInterfaceName pname (returnName)) 1
                   proxyApplied = [e|$constructorApplied $(varE proxyName)|]
                   makeArgumentNullPtr =
                       let argIdx = fromJust $ findIndex isNewId (messageArguments msg)
@@ -383,28 +386,6 @@ generateClientExternalMethods ps = liftM rights $ generateMethods ps Client
 
 generateServerExternalMethods :: ProtocolSpec -> Q [Dec]
 generateServerExternalMethods ps = liftM rights $ generateMethods ps Server
-
-genClientRequestCType :: [Argument] -> TypeQ
-genClientRequestCType = genClientRequestType argTypeToCType
-
-genClientRequestHaskType :: [Argument] -> TypeQ
-genClientRequestHaskType = genClientRequestType argTypeToHaskType
-
-genClientRequestType :: (Argument -> TypeQ) -> [Argument] -> TypeQ
-genClientRequestType fun args =
-  let
-    numNewIds = sum $ map (boolToInt . isNewId) args
-    fixedArgs = if numNewIds==1
-                   then filter notNewIds args
-                   else args
-    notNewIds arg = case arg of
-                      (_, NewIdArg _ _, _) -> False
-                      _                  -> True
-    returnType = if numNewIds==1
-                    then fun $ head $ filter (not.notNewIds) args
-                    else [t|()|]
-  in
-    foldr (\addtype curtype -> [t|$addtype -> $curtype|]) [t|IO $(returnType)|] $ (map fun fixedArgs)
 
 genMessageCType :: Maybe TypeQ -> [Argument] -> TypeQ
 genMessageCType = genMessageType argTypeToCType
