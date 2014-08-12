@@ -1,5 +1,5 @@
 module Graphics.Wayland.Scanner.Protocol (
-  readProtocol
+  readProtocol, parseFile
   ) where
 
 import Data.Functor
@@ -61,17 +61,24 @@ parseInterface pname elt =
      interfaceEnums = map parseEnum $ findChildren enum elt
      }
 
+parseProtocol :: [Content] -> ProtocolSpec
+parseProtocol xmlTree =
+  let subTree = (!!1) $ onlyElems xmlTree -- cut off XML header stuff
+      pname = fromJust $ findAttr namexml subTree
+      interfaces = map (parseInterface pname) $ findChildren interface subTree
+  in ProtocolSpec pname interfaces
+
+parseFile :: FilePath -> IO ProtocolSpec
+parseFile filename = do
+  fileContents <- readFile filename
+  return $ parseProtocol $ parseXML fileContents
+
 -- | locate wayland.xml on disk and parse it
 readProtocol :: IO ProtocolSpec
 readProtocol = do
   datadir <- figureOutWaylandDataDir
-  protocolXmlFile <- readFile (datadir ++ "/" ++ protocolFile)
-  let xmlTree = (!!1) $ onlyElems $ parseXML protocolXmlFile :: Element
+  parseFile (datadir ++ "/" ++ protocolFile)
 
-  let pname = fromJust $ findAttr namexml xmlTree
-  -- This is where we parse the XML... i.e. the magic of this file.
-  let interfaces = map (parseInterface pname) $ findChildren interface xmlTree
-  return $ ProtocolSpec pname interfaces
 
 -- TODO move this into some pretty Setup.hs thing
 figureOutWaylandDataDir :: IO String
