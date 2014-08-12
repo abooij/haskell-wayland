@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Graphics.Wayland.Internal.Util (
-  CInterface, Client(..), Fixed256, Precision256
+  CInterface(..), Client(..), Fixed256, Precision256
   ) where
 
 import Data.Fixed (Fixed(..), HasResolution(..))

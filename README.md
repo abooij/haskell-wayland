@@ -2,8 +2,7 @@
 Uh... these are what you'd expect.
 
 ## TODO ##
-- bind to wl_registry.bind
-- add "default" proxy destructors
+- prettify binding to wl_registry.bind (ie make more type-safe, add haskell documentation, etc)
 - fix exposed symbols
 - some kind of fancy FRP library binding?
 - write documentation strings from .protocol files into haddock???
