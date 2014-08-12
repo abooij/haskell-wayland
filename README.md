@@ -9,3 +9,4 @@ Uh... these are what you'd expect.
 - allow easy building of other .protocol files into haskell bindings
 - write README documentation detailing general binding strategy
 - protocol version checker function
+- check if returned objects may be NULL (everywhere!)
