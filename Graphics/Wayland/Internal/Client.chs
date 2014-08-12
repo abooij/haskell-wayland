@@ -43,8 +43,6 @@ import Graphics.Wayland
 -- -- | struct wl_interface pointer. for internal use only. (proxy typing)
 -- {#pointer * interface as Interface newtype#}
 
--- TODO list interfaces etc blabla
-
 
 
 -- Functions/methods

@@ -59,9 +59,8 @@ generateTypes ps = liftM concat $ sequence $ map generateInterface (protocolInte
     let iname = interfaceName iface
         pname = protocolName ps
         qname = interfaceTypeName pname iname
-    constructorType <- [t|$(conT ''Ptr) ()|]
+    constructorType <- [t|$(conT ''Ptr) $(conT qname)|]
     typeDec <- newtypeD (return []) qname [] (normalC qname [return (NotStrict, constructorType)]) [mkName "Show", mkName "Eq"]
-    -- (NewtypeD [] qname [] (NormalC qname [(NotStrict,AppT (ConT ''Ptr) (ConT ''()))]) [mkName "Show", mkName "Eq"])
 
     -- We will later need a pointer to the wl_interface structs, for passing to wl_proxy_marshal_constructor and wl_resource_create.
     -- Now, a pretty solution would construct its own wl_interface struct here.
@@ -315,7 +314,6 @@ generateListener sp iface sc =
         return $ DataD [] typeName [] [RecC typeName recArgs] []
 
       -- in the weird uint32_t new_id case, first pass the id through wl_resource_create to just get a resource
-      -- TODO
       preCompResourceCreate clientName msg fun =
         case sc of
           Client -> fun

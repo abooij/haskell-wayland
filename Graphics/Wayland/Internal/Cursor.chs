@@ -59,7 +59,8 @@ import Graphics.Wayland.Internal.SpliceClientTypes (Shm(..), Buffer(..))
 
 -- struct wl_buffer *
 -- wl_cursor_image_get_buffer(struct wl_cursor_image *image);
-{#fun unsafe cursor_image_get_buffer as cursorImageGetBuffer {`CursorImage'} -> `Buffer' Buffer #}
+{#pointer * buffer as Buffer nocode#}
+{#fun unsafe cursor_image_get_buffer as cursorImageGetBuffer {`CursorImage'} -> `Buffer' #}
 
 -- int
 -- wl_cursor_frame(struct wl_cursor *cursor, uint32_t time);
