@@ -10,7 +10,11 @@ module Graphics.Wayland.Internal.Server (
   DisplayServer, displayCreate, displayDestroy, displayGetEventLoop, displayAddSocket,
   displayTerminate, displayRun, displayFlushClients, displayGetSerial, displayNextSerial,
 
-  clientCreate, clientDestroy, clientFlush, clientGetCredentials, clientPostNoMemory
+  clientCreate, clientDestroy, clientFlush, clientGetCredentials, clientPostNoMemory,
+
+  ShmBuffer, shmBufferBeginAccess, shmBufferEndAccess, shmBufferGet, shmBufferGetData,
+  shmBufferGetStride, shmBufferGetFormat, shmBufferGetWidth, shmBufferGetHeight,
+  displayInitShm, displayAddShmFormat, shmBufferCreate
   ) where
 
 import Control.Monad (liftM)
@@ -22,6 +26,7 @@ import System.Posix.Types
 
 import Graphics.Wayland.Internal.SpliceServerInternal
 import Graphics.Wayland.Internal.SpliceServer
+import Graphics.Wayland.Internal.SpliceServerTypes
 import Graphics.Wayland.Internal.Util (Client(..))
 import Graphics.Wayland
 
@@ -495,43 +500,64 @@ peekGid = liftM CGid . liftM fromIntegral . peek
 -- 	     tmp = wl_resource_from_link(wl_resource_get_link(resource)->next))
 
 
--- TODO bind the stuff below
-
+-- this is a dirty hack to make shmBufferGet accept a Buffer
+{#pointer * resource as Buffer newtype nocode#}
 -- struct wl_shm_buffer;
+{#pointer * shm_buffer as ShmBuffer newtype#}
+receiveMaybeShmBuffer :: ShmBuffer -> Maybe ShmBuffer
+receiveMaybeShmBuffer (ShmBuffer x)
+  | x == nullPtr = Nothing
+  | otherwise    = Just (ShmBuffer x)
 
--- void
+-- | void
 -- wl_shm_buffer_begin_access(struct wl_shm_buffer *buffer);
+--
+-- Lock the memory for reading. Needed to protect the server against SIGBUS signals
+-- caused by the client resizing the buffer.
+{#fun unsafe shm_buffer_begin_access as shmBufferBeginAccess {`ShmBuffer'} -> `()' #}
 
--- void
+-- |void
 -- wl_shm_buffer_end_access(struct wl_shm_buffer *buffer);
+--
+-- Unlock the memory.
+{#fun unsafe shm_buffer_end_access as shmBufferEndAccess {`ShmBuffer'} -> `()' #}
 
--- struct wl_shm_buffer *
+-- | struct wl_shm_buffer *
 -- wl_shm_buffer_get(struct wl_resource *resource);
+{#fun unsafe shm_buffer_get as shmBufferGet {`Buffer'} -> `Maybe ShmBuffer' receiveMaybeShmBuffer #}
 
--- void *
+-- | void *
 -- wl_shm_buffer_get_data(struct wl_shm_buffer *buffer);
+{#fun unsafe shm_buffer_get_data as shmBufferGetData {`ShmBuffer'} -> `Ptr ()' id #}
 
--- int32_t
+-- | int32_t
 -- wl_shm_buffer_get_stride(struct wl_shm_buffer *buffer);
+{#fun unsafe shm_buffer_get_stride as shmBufferGetStride {`ShmBuffer'} -> `Int' #}
 
--- uint32_t
+-- | uint32_t
 -- wl_shm_buffer_get_format(struct wl_shm_buffer *buffer);
+{#fun unsafe shm_buffer_get_format as shmBufferGetFormat {`ShmBuffer'} -> `Word' fromIntegral#}
 
--- int32_t
+-- | int32_t
 -- wl_shm_buffer_get_width(struct wl_shm_buffer *buffer);
+{#fun unsafe shm_buffer_get_width as shmBufferGetWidth {`ShmBuffer'} -> `Int' #}
 
--- int32_t
+-- | int32_t
 -- wl_shm_buffer_get_height(struct wl_shm_buffer *buffer);
+{#fun unsafe shm_buffer_get_height as shmBufferGetHeight {`ShmBuffer'} -> `Int' #}
 
--- int
+-- | int
 -- wl_display_init_shm(struct wl_display *display);
+{#fun unsafe display_init_shm as displayInitShm {`DisplayServer'} -> `Result' errToResult #}
 
--- uint32_t *
+-- | uint32_t *
 -- wl_display_add_shm_format(struct wl_display *display, uint32_t format);
+{#fun unsafe display_add_shm_format as displayAddShmFormat {`DisplayServer', fromIntegral `Word'} -> `()' #}
 
--- struct wl_shm_buffer *
+-- | struct wl_shm_buffer *
 -- wl_shm_buffer_create(struct wl_client *client,
 -- 		     uint32_t id, int32_t width, int32_t height,
 -- 		     int32_t stride, uint32_t format);
+{#fun unsafe shm_buffer_create as shmBufferCreate {`Client', fromIntegral `Word', fromIntegral `Word', `Int', `Int', fromIntegral `Word'} -> `Maybe ShmBuffer' receiveMaybeShmBuffer#}
 
 -- void wl_log_set_handler_server(wl_log_func_t handler);
