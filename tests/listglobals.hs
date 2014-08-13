@@ -1,32 +1,30 @@
-import Control.Monad
 import Control.Concurrent
-import System.IO
 
 import Graphics.Wayland.Client
 
 main = do
-  a <- displayConnect
-  fd <- displayGetFd a
+  display <- displayConnect
+  fd <- displayGetFd display
   putStrLn $ "Using file descriptor " ++ show fd
-  putStrLn $ "Display at " ++ show a
-  b <- displayGetRegistry a
-  putStrLn $ "Registry at "++ show b
+  putStrLn $ "Display at " ++ show display
+  registry <- displayGetRegistry display
+  putStrLn $ "Registry at "++ show registry
   let listener = RegistryListener {
     registryGlobal = \reg name ifacename version -> putStrLn $ "Received global " ++ show name ++ " (" ++ ifacename ++ ") version " ++ show version,
     registryGlobalRemove = \ _ _ -> return ()
     }
-  errorCode <- registrySetListener b listener
+  errorCode <- registrySetListener registry listener
   putStrLn $ "Setting registry listener... " ++ show errorCode
 
-  res <- displayPrepareRead a
+  res <- displayPrepareRead display
   putStrLn $ "Preparing read... " ++ show res
-  flushed <- displayFlush a
+  flushed <- displayFlush display
   putStrLn $ "Flushed " ++ show flushed
   putStrLn "polling"
   threadWaitRead fd
   putStrLn $ "Ready to read."
-  events <- displayReadEvents a
+  events <- displayReadEvents display
   putStrLn $ "Read display events: " ++ show events
-  dispatched <- displayDispatchPending a
+  dispatched <- displayDispatchPending display
   putStrLn $ "Dispatched events: " ++ show dispatched
-  displayDisconnect a
+  displayDisconnect display
