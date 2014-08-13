@@ -27,6 +27,7 @@ library
     Graphics.Wayland.Internal.Client,
     Graphics.Wayland.Internal.Cursor,
     Graphics.Wayland.Internal.EGL,
+    Graphics.Wayland.Internal.ServerClientState,
     Graphics.Wayland.Internal.Server,
     Graphics.Wayland.Internal.Util,
     Graphics.Wayland.Internal.Version,
@@ -40,7 +41,7 @@ library
     Graphics.Wayland.Scanner.Names,
     Graphics.Wayland.Scanner.Protocol,
     Graphics.Wayland.Scanner.Types
-  build-depends:       base >=4.7 && <4.8, xml >= 1.3 && < 1.4, process >= 1.1 && < 2, template-haskell > 2 && < 3
+  build-depends:       base >=4.7 && <4.8, xml >= 1.3 && < 1.4, process >= 1.1 && < 2, template-haskell > 2 && < 3, data-flags <0.1, time <1.5
   --build-tools:	       c2hs   -- not supported?
   default-extensions:  ForeignFunctionInterface
   -- hs-source-dirs:

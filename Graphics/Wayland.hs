@@ -1,6 +1,7 @@
 module Graphics.Wayland (
-  version, Fixed256, Precision256, Result(..), errToResult
-   ) where
+  version, Fixed256, Precision256, Time, Result(..), errToResult,
+  diffTimeToTime, timeToDiffTime
+  ) where
 
 import Foreign.C.Types
 

@@ -1,4 +1,9 @@
+-- Trying my best to piss off the Safe Haskell guys
+{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving #-}
 module Graphics.Wayland.Internal.Server (
+  ClientState(..), clientStateReadable, clientStateWritable, clientStateHangup,
+  clientStateError,
+
   EventLoop, EventSource,
 
   EventLoopFdFunc, EventLoopTimerFunc, EventLoopSignalFunc, EventLoopIdleFunc,
@@ -19,11 +24,14 @@ module Graphics.Wayland.Internal.Server (
 
 import Control.Monad (liftM)
 import Data.Functor ((<$>))
+import Data.Flags
+import Data.Flags.TH
 import Foreign
 import Foreign.C.Types
 import Foreign.C.String
 import System.Posix.Types
 
+import Graphics.Wayland.Internal.ServerClientState -- for the WL_EVENT_* constants
 import Graphics.Wayland.Internal.SpliceServerInternal
 import Graphics.Wayland.Internal.SpliceServer
 import Graphics.Wayland.Internal.SpliceServerTypes
@@ -37,12 +45,6 @@ import Graphics.Wayland
 
 
 
--- enum {
--- 	WL_EVENT_READABLE = 0x01,
--- 	WL_EVENT_WRITABLE = 0x02,
--- 	WL_EVENT_HANGUP   = 0x04,
--- 	WL_EVENT_ERROR    = 0x08
--- };
 
 
 boolToCInt :: Bool -> CInt
@@ -64,31 +66,46 @@ makeWith' b f = f b
 
 withNullPtr = makeWith' nullPtr
 
+-- | enum {
+-- 	WL_EVENT_READABLE = 0x01,
+-- 	WL_EVENT_WRITABLE = 0x02,
+-- 	WL_EVENT_HANGUP   = 0x04,
+-- 	WL_EVENT_ERROR    = 0x08
+-- };
+--
+-- The "uint32_t mask" argument passed to a variety of functions in this file is a bitmask
+-- detailing the state of the client.
+$(bitmaskWrapper "ClientState" ''CUInt [''Num, ''Integral, ''Real, ''Enum, ''Ord] [
+  ("clientStateReadable", fromIntegral $ fromEnum ClientReadable),
+  ("clientStateWritable", fromIntegral $  fromEnum ClientWritable),
+  ("clientStateHangup",   fromIntegral $  fromEnum ClientHangup),
+  ("clientStateError",    fromIntegral $  fromEnum ClientError)
+  ])
 
--- struct wl_event_loop;
+-- | struct wl_event_loop;
 {#pointer * event_loop as EventLoop newtype#}
 
--- struct wl_event_source;
+-- | struct wl_event_source;
 {#pointer * event_source as EventSource newtype#}
 
--- typedef int (*wl_event_loop_fd_func_t)(int fd, uint32_t mask, void *data);
 type CEventLoopFdFunc = CInt -> {#type uint32_t#} -> Ptr () -> IO CInt
-type EventLoopFdFunc = Int -> Word -> IO Bool
+-- | typedef int (*wl_event_loop_fd_func_t)(int fd, uint32_t mask, void *data);
+type EventLoopFdFunc = Int -> ClientState -> IO Bool
 foreign import ccall unsafe "wrapper" makeFdFunPtr :: CEventLoopFdFunc -> IO (FunPtr CEventLoopFdFunc)
 marshallEventLoopFdFunc :: EventLoopFdFunc -> IO (FunPtr CEventLoopFdFunc)
 marshallEventLoopFdFunc func = makeFdFunPtr $ \ fd mask _ -> boolToCInt <$> func (fromIntegral fd) (fromIntegral mask)
 melff = makeWith marshallEventLoopFdFunc
 
--- typedef int (*wl_event_loop_timer_func_t)(void *data);
 type CEventLoopTimerFunc = Ptr () -> IO CInt
+-- | typedef int (*wl_event_loop_timer_func_t)(void *data);
 type EventLoopTimerFunc = IO Bool
 foreign import ccall unsafe "wrapper" makeTimerFunPtr :: CEventLoopTimerFunc -> IO (FunPtr CEventLoopTimerFunc)
 marshallEventLoopTimerFunc :: EventLoopTimerFunc -> IO (FunPtr CEventLoopTimerFunc)
 marshallEventLoopTimerFunc func = makeTimerFunPtr $ \ _ -> boolToCInt <$> func
 meltf = makeWith marshallEventLoopTimerFunc
 
--- typedef int (*wl_event_loop_signal_func_t)(int signal_number, void *data);
 type CEventLoopSignalFunc = CInt -> Ptr () -> IO CInt
+-- | typedef int (*wl_event_loop_signal_func_t)(int signal_number, void *data);
 type EventLoopSignalFunc = Int -> IO Bool
 foreign import ccall unsafe "wrapper" makeSignalFunPtr :: CEventLoopSignalFunc -> IO (FunPtr CEventLoopSignalFunc)
 marshallEventLoopSignalFunc :: EventLoopSignalFunc -> IO (FunPtr CEventLoopSignalFunc)
@@ -113,14 +130,10 @@ melif = makeWith marshallEventLoopIdleFunc
 -- 					     int fd, uint32_t mask,
 -- 					     wl_event_loop_fd_func_t func,
 -- 					     void *data);
---
--- FIXME is mask a bitmask?
-{#fun unsafe event_loop_add_fd as eventLoopAddFd {`EventLoop', unFd `Fd', fromIntegral `Word', melff* `EventLoopFdFunc', withNullPtr- `Ptr ()'} -> `EventSource' #}
+{#fun unsafe event_loop_add_fd as eventLoopAddFd {`EventLoop', unFd `Fd', fromIntegral `ClientState', melff* `EventLoopFdFunc', withNullPtr- `Ptr ()'} -> `EventSource' #}
 
 -- | int wl_event_source_fd_update(struct wl_event_source *source, uint32_t mask);
---
--- FIXME is mask a bitmask?
-{#fun unsafe event_source_fd_update as eventSourceFdUpdate {`EventSource', fromIntegral `Word'} -> `Result' errToResult #}
+{#fun unsafe event_source_fd_update as eventSourceFdUpdate {`EventSource', fromIntegral `ClientState'} -> `Result' errToResult #}
 
 -- | struct wl_event_source *wl_event_loop_add_timer(struct wl_event_loop *loop,
 -- 						wl_event_loop_timer_func_t func,

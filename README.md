@@ -147,8 +147,6 @@ Try using [wayland-tracker](https://github.com/01org/wayland-tracker) if your co
 
 ## TODO ##
 
-- fix FIXMEs and TODOs in source
-- be smart about argument names to find better marshalling types. e.g. a uint argument with name "fd" should be marshalled to a haskell Fd. a uint named "time" should be a Data.Time.Clock.POSIX.POSIXTime.
 - prettify binding to wl_registry.bind (ie make more type-safe, add haskell documentation, etc)
 - fix exposed symbols
 - some kind of fancy FRP library binding?

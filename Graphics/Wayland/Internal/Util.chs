@@ -1,9 +1,15 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Graphics.Wayland.Internal.Util (
-  CInterface(..), Client(..), Fixed256, Precision256
+  CInterface(..), Client(..),
+
+  Fixed256, Precision256,
+
+  Time, millisecondsToTime, timeToMilliseconds, diffTimeToTime, timeToDiffTime
   ) where
 
-import Data.Fixed (Fixed(..), HasResolution(..))
+import Data.Ratio ((%))
+import Data.Time.Clock (DiffTime)
+import Data.Fixed (Fixed(..), HasResolution(..), Milli(..))
 import Data.Typeable
 import Data.Functor
 import Foreign
@@ -32,3 +38,19 @@ instance HasResolution Precision256 where
 --
 --   The equivalent of wayland's wl_fixed_t.
 type Fixed256 = Fixed Precision256
+
+-- | Represents time in seconds with millisecond precision.
+--
+--
+type Time = Milli
+
+millisecondsToTime :: CUInt -> Time
+millisecondsToTime = MkFixed . fromIntegral
+timeToMilliseconds :: Time -> CUInt
+timeToMilliseconds (MkFixed n) = fromIntegral n
+
+timeToDiffTime :: Time -> DiffTime
+timeToDiffTime (MkFixed n) = fromRational (n % 1000)
+
+diffTimeToTime :: DiffTime -> Time
+diffTimeToTime = fromRational . toRational

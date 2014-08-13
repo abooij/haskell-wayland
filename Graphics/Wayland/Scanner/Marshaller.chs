@@ -17,7 +17,7 @@ import System.IO
 import System.Posix.Types
 import Language.Haskell.TH
 
-import Graphics.Wayland.Internal.Util (Fixed256)
+import Graphics.Wayland.Internal.Util (Fixed256, Time, millisecondsToTime, timeToMilliseconds)
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner.Names
 import Graphics.Wayland.Scanner.Types
@@ -44,7 +44,9 @@ argTypeToCType (_,FdArg,_) = [t| {#type int32_t#} |]
 
 argTypeToHaskType :: Argument -> TypeQ
 argTypeToHaskType (_,IntArg,_) = [t|Int|]
-argTypeToHaskType (_,UIntArg,_) = [t|Word|]
+argTypeToHaskType (name,UIntArg,_)
+  | name == "time" = [t|Time|]
+  | otherwise      = [t|Word|]
 argTypeToHaskType (_,FixedArg,_) = [t|Fixed256|]
 argTypeToHaskType (_,StringArg,False) = [t|String|]
 argTypeToHaskType (_,(ObjectArg iname),False) = return $ ConT iname
@@ -69,7 +71,9 @@ argTypeMarshaller args fun =
       mk = return . VarE . marshallerVar
       applyMarshaller :: [Argument] -> ExpQ -> ExpQ
       applyMarshaller (arg@(_, IntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Int) )|])|]
-      applyMarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Word))|]) |]
+      applyMarshaller (arg@(name, UIntArg, _):as) fun
+        | name == "time" = [|$(applyMarshaller as [|$fun (timeToMilliseconds ($(mk arg) :: Time))|]) |]
+        | otherwise      = [|$(applyMarshaller as [|$fun (fromIntegral ($(mk arg) :: Word))|]) |]
       applyMarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyMarshaller as [|$fun (fixed256ToWlFixed $(mk arg))|]) |]
       applyMarshaller (arg@(_, StringArg, False):as) fun = [|withCString $(mk arg) (\cstr -> $(applyMarshaller as [|$fun cstr|]))|]
       applyMarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyMarshaller as [|$fun $(mk arg)|]) |]
@@ -103,7 +107,9 @@ argTypeUnmarshaller args fun =
       mk = return . VarE . marshallerVar
       applyUnmarshaller :: [Argument] -> ExpQ -> ExpQ
       applyUnmarshaller (arg@(_, IntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CInt) )|])|]
-      applyUnmarshaller (arg@(_, UIntArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CUInt))|]) |]
+      applyUnmarshaller (arg@(name, UIntArg, _):as) fun
+        | name == "time" = [|$(applyUnmarshaller as [|$fun (millisecondsToTime ($(mk arg) :: CUInt))|]) |]
+        | otherwise      = [|$(applyUnmarshaller as [|$fun (fromIntegral ($(mk arg) :: CUInt))|]) |]
       applyUnmarshaller (arg@(_, FixedArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (wlFixedToFixed256 $(mk arg))|]) |]
       applyUnmarshaller (arg@(_, StringArg, False):as) fun = [|do str <- peekCString $(mk arg); $(applyUnmarshaller as [|$fun str|])|]
       applyUnmarshaller (arg@(_, (ObjectArg iname), False):as) fun = [|$(applyUnmarshaller as [|$fun $(mk arg)|]) |]
