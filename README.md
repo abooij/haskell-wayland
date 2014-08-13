@@ -24,7 +24,10 @@ Refer to `NOTES.md` for more notes on wayland terminology, how it works, and way
 
     Let's connect to the display server (e.g.) weston. displayConnect takes no arguments and tries to connect to a server based on environment variables.
 
-    >   display <- displayConnect
+    >   connect <- displayConnect
+    >   let display = case connect of
+    >                   Just x -> x
+    >                   Nothing -> error "couldn't connect to a wayland server"
 
     We'll need to poll for the status of the socket connection between this client and the server, so let's go ahead and store the file descriptor.
 
@@ -152,4 +155,3 @@ Try using [wayland-tracker](https://github.com/01org/wayland-tracker) if your co
 - write documentation strings from .protocol files into haddock???
 - allow easy building of other .protocol files into haskell bindings
 - protocol version checker function
-- check if returned objects may be NULL in fixed API (protocol-generated API should be fine since object construction is guaranteed to work and potentially NULL objects should be advertised as nullable in the XML files)

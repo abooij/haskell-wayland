@@ -24,6 +24,24 @@ import Graphics.Wayland
 
 {#context prefix="wl"#}
 
+unFd :: Fd -> CInt
+unFd (Fd k) = k
+
+makeWith' :: b -> (b -> IO c) -> IO c
+makeWith' b f = f b
+
+withNullPtr = makeWith' nullPtr
+
+codeToNothing :: Int -> Int -> Maybe Int
+codeToNothing j k
+  | j == k    = Nothing
+  | otherwise = Just k
+
+codeNeg1ToNothing :: CInt -> Maybe Int
+codeNeg1ToNothing = codeToNothing (-1) . fromIntegral
+
+code0ToNothing    :: CInt -> Maybe Int
+code0ToNothing    = codeToNothing 0    . fromIntegral
 
 -- Data types
 
@@ -31,11 +49,6 @@ import Graphics.Wayland
 
 -- struct wl_display pointer (nocode since its interface is generated in SpliceProtocol)
 {#pointer * display as Display nocode#}
-
--- We don't use wl_proxy since it's like a superclass for all the objects (except wl_display).
--- Very type unsafe.
--- -- | struct wl_proxy pointer (generate type since this is not an interface)
--- {#pointer * proxy as Proxy newtype#}
 
 -- -- | struct wl_event_queue pointer (generate type since this is not an interface)
 -- {#pointer * event_queue as EventQueue newtype#}
@@ -82,18 +95,21 @@ import Graphics.Wayland
 -- void wl_proxy_set_queue(struct wl_proxy *proxy, struct wl_event_queue *queue);
 
 
+receiveMaybeDisplay :: Display -> Maybe Display
+receiveMaybeDisplay (Display x)
+  | x == nullPtr = Nothing
+  | otherwise    = Just (Display x)
+
 -- struct wl_display *wl_display_connect(const char *name);
 -- | Connect to a display with a specified name
-{#fun unsafe display_connect as displayConnectName {`String'} -> `Display' #}
+{#fun unsafe display_connect as displayConnectName {`String'} -> `Maybe Display' receiveMaybeDisplay #}
 
 -- | Connect to the default display by passing a null pointer
-displayConnect = {#call unsafe display_connect#} nullPtr
+{#fun unsafe display_connect as displayConnect {withNullPtr- `Ptr CChar'} -> `Maybe Display' receiveMaybeDisplay #}
 
 -- struct wl_display *wl_display_connect_to_fd(int fd);
-unFd :: Fd -> CInt
-unFd (Fd k) = k
 -- | Connect to a display by file descriptor
-{#fun unsafe display_connect_to_fd as displayConnectFd {unFd `Fd'} -> `Display' #}
+{#fun unsafe display_connect_to_fd as displayConnectFd {unFd `Fd'} -> `Maybe Display' receiveMaybeDisplay #}
 
 -- void wl_display_disconnect(struct wl_display *display);
 {#fun unsafe display_disconnect as displayDisconnect {`Display'} -> `()' #}
@@ -106,16 +122,6 @@ unFd (Fd k) = k
 --
 -- Strictly safe!!! This *will* call back into Haskell code!
 {#fun display_dispatch as displayDispatch {`Display'} -> `Maybe Int' codeNeg1ToNothing #}
-codeToNothing :: Int -> Int -> Maybe Int
-codeToNothing j k
-  | j == k    = Nothing
-  | otherwise = Just k
-
-codeNeg1ToNothing :: CInt -> Maybe Int
-codeNeg1ToNothing = codeToNothing (-1) . fromIntegral
-
-code0ToNothing    :: CInt -> Maybe Int
-code0ToNothing    = codeToNothing 0    . fromIntegral
 
 -- -- int wl_display_dispatch_queue(struct wl_display *display,
 -- --                               struct wl_event_queue *queue);

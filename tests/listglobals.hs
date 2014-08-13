@@ -3,7 +3,10 @@ import Control.Concurrent
 import Graphics.Wayland.Client
 
 main = do
-  display <- displayConnect
+  connect <- displayConnect
+  let display = case connect of
+                  Just x -> x
+                  Nothing -> error "couldn't connect to a wayland server."
   fd <- displayGetFd display
   putStrLn $ "Using file descriptor " ++ show fd
   putStrLn $ "Display at " ++ show display

@@ -59,6 +59,7 @@ makeWith' b f = f b
 
 withNullPtr = makeWith' nullPtr
 
+
 -- struct wl_event_loop;
 {#pointer * event_loop as EventLoop newtype#}
 
@@ -162,6 +163,11 @@ melif = makeWith marshallEventLoopIdleFunc
 -- defined in .Util
 {#pointer * client as Client newtype nocode#}
 
+receiveMaybeClient :: Client -> Maybe Client
+receiveMaybeClient (Client x)
+  | x == nullPtr = Nothing
+  | otherwise    = Just (Client x)
+
 -- |struct wl_display;
 --
 -- this is called a Compositor in e.g weston, QtWayland
@@ -228,7 +234,7 @@ withMaybeCString (Just str) fun = withCString str fun
 -- void wl_global_destroy(struct wl_global *global);
 
 -- | struct wl_client *wl_client_create(struct wl_display *display, int fd);
-{#fun unsafe client_create as clientCreate {`DisplayServer', unFd `Fd'} -> `Client' #}
+{#fun unsafe client_create as clientCreate {`DisplayServer', unFd `Fd'} -> `Maybe Client' receiveMaybeClient #}
 
 -- | void wl_client_destroy(struct wl_client *client);
 {#fun unsafe client_destroy as clientDestroy {`Client'} -> `()' #}
