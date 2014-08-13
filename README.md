@@ -94,12 +94,13 @@ The majority of the Wayland API is based on an object-oriented event framework.
 The objects have a type, which wayland calls an _interface_.
 A _protocol_ defines a list of such interfaces.
 
-Haskell renames these interfaces by, if possible, removing `wl_`, and then converting to CamelCase.
+Haskell renames these interfaces by, if possible, removing `wl_`, and, if possible, removing `<name of the protocol>_`, and then converting to CamelCase.
 For example:
 
 - `wl_display` is called `Display` in haskell-wayland
 - `wl_registry` -> `Registry`
 - `xdg_shell` -> `XdgShell` (as of this writing, however, `xdg_shell` is not in the default wayland protocol - but you can access it by generating the haskell-wayland API using the corresponding protocol XML files)
+- `wl_text_input` (in the `text.xml` protocol) -> `Input` (which for semantic reasons should be placed in a Haskell module whose name makes it clear that it corresponds to text input)
 - ...
 
 Wayland names the actions on these interfaces e.g. `wl_display_connect` or `wl_compositor_create_region`. haskell-wayland converts these names into camelCase, so that you would call `displayConnect` or `compositorCreateRegion`.
