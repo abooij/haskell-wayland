@@ -120,7 +120,7 @@ Its purpose is to bind to the C wayland interface and marshall all values.
 
 To have haskell-wayland generate a haskell API to other such XML files (the `wayland.xml` is always generated), you'll want to copy what I did in `Graphics.Wayland.Internal.SpliceClient`, `Graphics.Wayland.Internal.SpliceClientInternal` and `Graphics.Wayland.Internal.SpliceClientTypes` (but this might change to fix what symbols that are exposed to the user).
 Only the first two are to be exported to the user (see `Graphics.Wayland.Client` and notice that `Graphics.Wayland.Internal.SpliceClientInternal` is absent).
-
+(Ditto for the Server-side.)
 
 ## Value marshalling ##
 
