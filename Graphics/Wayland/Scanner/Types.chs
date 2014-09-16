@@ -1,7 +1,11 @@
 module Graphics.Wayland.Scanner.Types where
 
+import Foreign
 import Language.Haskell.TH (Name)
 
+#include <wayland-util.h>
+
+{#context prefix="wl"#}
 
 data ServerClient = Server | Client  deriving (Eq)
 
@@ -30,7 +34,8 @@ argConversionTable = [
   ("uint", UIntArg),
   ("fixed", FixedArg),
   ("string", StringArg),
-  ("fd", FdArg)]
+  ("fd", FdArg),
+  ("array", ArrayArg)]
 
 type Argument = (String, ArgumentType, Bool) -- name, argument type, allow-null
 
@@ -46,3 +51,5 @@ data ProtocolSpec = ProtocolSpec {
   protocolName :: ProtocolName,
   protocolInterfaces :: [Interface]
   } deriving (Show)
+
+{#pointer * array as WLArray#}

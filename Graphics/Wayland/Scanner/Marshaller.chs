@@ -7,6 +7,7 @@ module Graphics.Wayland.Scanner.Marshaller (
   funcSize, funcAlign
   ) where
 
+import Control.Exception.Base (bracket)
 import Data.Functor
 import Data.Fixed (Fixed(..))
 import Foreign
@@ -32,6 +33,8 @@ wlFixedToFixed256 = MkFixed . fromIntegral
 fixed256ToWlFixed :: Fixed256 -> CInt
 fixed256ToWlFixed (MkFixed a) = fromIntegral a
 
+-- {#pointer * array as WLArray nocode#}
+
 argTypeToCType :: Argument -> TypeQ
 argTypeToCType (_,IntArg,_) = [t| {#type int32_t#} |]
 argTypeToCType (_,UIntArg,_) = [t| {#type uint32_t#} |]
@@ -39,7 +42,7 @@ argTypeToCType (_,FixedArg,_) = [t|{#type fixed_t#}|]
 argTypeToCType (_,StringArg,_) = [t| Ptr CChar |]
 argTypeToCType (_,(ObjectArg iname),_) = return $ ConT iname
 argTypeToCType (_,(NewIdArg iname _),_) = return $ ConT iname
-argTypeToCType (_,ArrayArg,_) = undefined
+argTypeToCType (_,ArrayArg,_) = [t|WLArray|]
 argTypeToCType (_,FdArg,_) = [t| {#type int32_t#} |]
 
 argTypeToHaskType :: Argument -> TypeQ
@@ -54,7 +57,8 @@ argTypeToHaskType (_,(NewIdArg iname _),False) = return $ ConT iname
 argTypeToHaskType (_,StringArg,True) = [t|Maybe String|]
 argTypeToHaskType (_,(ObjectArg iname),True) = [t|Maybe $(conT iname) |]
 argTypeToHaskType (_,(NewIdArg iname _),True) = [t|Maybe $(conT iname) |]
-argTypeToHaskType (_,ArrayArg,_) = undefined
+argTypeToHaskType (_,ArrayArg,True) = [t|Maybe (Int, Ptr ())|] -- size_t size and void*
+argTypeToHaskType (_,ArrayArg,False) = [t|(Int, Ptr ())|] -- size_t size and void*
 argTypeToHaskType (_,FdArg,_) = [t|Fd|]
 
 argTypeToWeirdInterfaceCType :: Argument -> TypeQ
@@ -93,7 +97,32 @@ argTypeMarshaller args fun =
              Nothing  -> $(applyMarshaller as [|$fun ($(conE iname) nullPtr)|])
              Just obj -> $(applyMarshaller as [|$fun obj|])
            |]
-      applyMarshaller (arg@(_, ArrayArg, _):as) fun = undefined
+      applyMarshaller (arg@(_, ArrayArg, True):as) fun = [|
+           case $(mk arg) of
+             Nothing -> $(applyMarshaller as [|$fun nullPtr|])
+             Just (size, dat) -> bracket
+               (mallocBytes (2*{#sizeof size_t#}+ 4)) -- FIXME prettify / make portable. is this even right?
+               (free)
+               (\arrayPtr -> do
+                 {#set array.size#} arrayPtr size
+                 {#set array.alloc#} arrayPtr size -- FIXME or should we force powers of 2?
+                 {#set array.data#} arrayPtr dat
+                 $(applyMarshaller as [|$fun arrayPtr|])
+                 )
+           |]
+      applyMarshaller (arg@(_, ArrayArg, False):as) fun = [|
+           do
+             let (size, dat) = $(mk arg)
+             bracket
+               (mallocBytes (2*{#sizeof size_t#}+ 4)) -- FIXME prettify / make portable. is this even right?
+               (free)
+               (\arrayPtr -> do
+                 {#set array.size#} arrayPtr size
+                 {#set array.alloc#} arrayPtr size -- FIXME or should we force powers of 2?
+                 {#set array.data#} arrayPtr dat
+                 $(applyMarshaller as [|$fun arrayPtr|])
+                 )
+           |]
       applyMarshaller (arg@(_, FdArg, _):as) fun = [|$(applyMarshaller as [|$fun (unFd ($(mk arg)))|]) |]
       applyMarshaller [] fun = fun
   in  (map VarP vars, applyMarshaller args fun)
@@ -129,7 +158,19 @@ argTypeUnmarshaller args fun =
                if $(mk arg) == nullPtr
                   then Nothing
                   else Just $ $(conE iname) $(mk arg)|]) |]
-      applyUnmarshaller (arg@(_, ArrayArg, _):as) fun = undefined
+      applyUnmarshaller (arg@(_, ArrayArg, True):as) fun = [|
+               if $(mk arg) == nullPtr
+                 then $(applyUnmarshaller as [|$fun Nothing|])
+                 else do
+                   size <- fromIntegral <$> {#get array->size#} ($(mk arg) :: WLArray)
+                   dat <- {#get array->data#} ($(mk arg) :: WLArray)
+                   $(applyUnmarshaller as [|$fun (Just (size, dat)) |])
+               |]
+      applyUnmarshaller (arg@(_, ArrayArg, False):as) fun = [|do
+               size <- fromIntegral <$> {#get array->size#} ($(mk arg) :: WLArray)
+               dat <- {#get array->data#} ($(mk arg) :: WLArray)
+               $(applyUnmarshaller as [|$fun (size, dat) |])
+               |]
       applyUnmarshaller (arg@(_, FdArg, _):as) fun = [|$(applyUnmarshaller as [|$fun (Fd ($(mk arg)))|]) |]
       applyUnmarshaller [] fun = fun
   in  (map VarP vars, applyUnmarshaller args fun)

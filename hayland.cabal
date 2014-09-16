@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                hayland
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            Haskell bindings for the C Wayland library.
 description:         This package contains bindings to the Wayland library, which is used to interface display devices, drawable clients, and window managers.
                      .
