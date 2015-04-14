@@ -11,6 +11,4 @@ import Graphics.Wayland.Scanner
 import Graphics.Wayland.Internal.SpliceClientTypes
 
 
-$(runIO readProtocol >>= generateClientInternalMethods)
-$(runIO readProtocol >>= generateClientInternalListeners)
-$(runIO readProtocol >>= generateRegistryBindInternal)
+$(runIO readProtocol >>= generateClientInternal)

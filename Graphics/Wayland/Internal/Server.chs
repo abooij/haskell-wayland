@@ -32,9 +32,9 @@ import Foreign.C.String
 import System.Posix.Types
 
 import Graphics.Wayland.Internal.ServerClientState -- for the WL_EVENT_* constants
+import Graphics.Wayland.Internal.SpliceServerTypes (Buffer(..))
 import Graphics.Wayland.Internal.SpliceServerInternal
 import Graphics.Wayland.Internal.SpliceServer
-import Graphics.Wayland.Internal.SpliceServerTypes
 import Graphics.Wayland.Internal.Util (Client(..))
 import Graphics.Wayland
 

@@ -9,5 +9,4 @@ import Foreign.C.Types
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner
 
-$(runIO readProtocol >>= generateTypes)
-$(runIO $ generateEnums <$> readProtocol)
+$(runIO readProtocol >>= generateServerTypes)

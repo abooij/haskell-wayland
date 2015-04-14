@@ -8,9 +8,7 @@ import Foreign.C.Types
 
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner
-import Graphics.Wayland.Internal.SpliceServerInternal
-import Graphics.Wayland.Internal.SpliceServerTypes
+import qualified Graphics.Wayland.Internal.SpliceServerInternal as Import
 
 
-$(runIO readProtocol >>= generateServerExternalMethods)
-$(runIO readProtocol >>= generateServerExternalListeners)
+$(runIO readProtocol >>= generateServerExports)

@@ -7,6 +7,7 @@ import Data.Maybe
 import Data.Char
 import Text.XML.Light
 import System.Process
+import Language.Haskell.TH (mkName)
 
 import Graphics.Wayland.Scanner.Types
 import Graphics.Wayland.Scanner.Names
@@ -41,8 +42,8 @@ parseInterface pname elt =
             let msgname = fromJust $ findAttr namexml argelt
             let argtypecode = fromJust $ findAttr typexml argelt
             argtype <- case argtypecode of
-              "object" -> ObjectArg . interfaceTypeName pname <$> findAttr interface argelt
-              "new_id" -> (\iname -> NewIdArg (interfaceTypeName pname iname) iname) <$> findAttr interface argelt
+              "object" -> ObjectArg . mkName . interfaceTypeName pname <$> findAttr interface argelt
+              "new_id" -> (\iname -> NewIdArg (mkName $ interfaceTypeName pname iname) iname) <$> findAttr interface argelt
               _ -> lookup argtypecode argConversionTable
             let allowNull = fromMaybe False (read <$> capitalize <$> findAttr allow_null argelt)
             return (msgname, argtype, allowNull)

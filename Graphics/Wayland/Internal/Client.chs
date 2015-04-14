@@ -14,9 +14,9 @@ import Foreign.C.Types
 import Foreign.C.String
 import System.Posix.Types
 
+import Graphics.Wayland.Internal.SpliceClientTypes (Display(..))
 import Graphics.Wayland.Internal.SpliceClientInternal
 import Graphics.Wayland.Internal.SpliceClient
-import Graphics.Wayland.Internal.SpliceClientTypes
 import Graphics.Wayland
 
 

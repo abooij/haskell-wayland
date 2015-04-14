@@ -10,6 +10,7 @@ module Graphics.Wayland.Scanner.Names (
   interfaceTypeName, interfaceCInterfaceName,
   enumTypeName, enumEntryHaskName,
   messageListenerTypeName,
+  messageListenerMessageName,
   messageListenerWrapperName,
   interfaceResourceCreator,
 
@@ -23,24 +24,24 @@ import Language.Haskell.TH
 import Graphics.Wayland.Scanner.Types
 
 
-registryBindName :: ProtocolName -> InterfaceName -> Name
-registryBindName pname iname = mkName $ "registryBind" ++ (capitalize $ haskifyInterfaceName pname iname)
+registryBindName :: ProtocolName -> InterfaceName -> String
+registryBindName pname iname = "registryBind" ++ (capitalize $ haskifyInterfaceName pname iname)
 
 requestInternalCName :: InterfaceName -> MessageName -> Name
 requestInternalCName iface msg = mkName $ iface ++ "_" ++ msg ++ "_request_binding"
 eventInternalCName :: InterfaceName -> MessageName -> Name
 eventInternalCName iface msg = mkName $ iface ++ "_" ++ msg ++ "_event_binding"
 
-requestHaskName :: ProtocolName -> InterfaceName -> MessageName -> Name
-requestHaskName pname iname mname = mkName $ toCamel (haskifyInterfaceName pname iname ++ "_" ++ mname)
-eventHaskName :: ProtocolName -> InterfaceName -> MessageName -> Name
-eventHaskName   pname iname mname = mkName $ toCamel (haskifyInterfaceName pname iname ++ "_" ++ mname)
+requestHaskName :: ProtocolName -> InterfaceName -> MessageName -> String
+requestHaskName pname iname mname = toCamel (haskifyInterfaceName pname iname ++ "_" ++ mname)
+eventHaskName :: ProtocolName -> InterfaceName -> MessageName -> String
+eventHaskName = requestHaskName
 enumEntryHaskName :: ProtocolName -> InterfaceName -> EnumName -> String -> Name
 enumEntryHaskName pname iname ename entryName =
   mkName $ haskifyInterfaceName pname iname ++ capitalize (toCamel ename) ++ capitalize (toCamel entryName)
 
-interfaceTypeName :: ProtocolName -> InterfaceName -> Name
-interfaceTypeName pname iname = mkName $ capitalize $ haskifyInterfaceName pname iname
+interfaceTypeName :: ProtocolName -> InterfaceName -> String
+interfaceTypeName pname iname = capitalize $ haskifyInterfaceName pname iname
 
 interfaceCInterfaceName :: ProtocolName -> InterfaceName -> Name
 interfaceCInterfaceName _ iname = mkName $ iname ++ "_c_interface"
@@ -51,6 +52,10 @@ enumTypeName pname iname ename = mkName $ capitalize $ haskifyInterfaceName pnam
 messageListenerTypeName :: ServerClient -> ProtocolName -> InterfaceName -> Name
 messageListenerTypeName Server pname iname = mkName $ capitalize (haskifyInterfaceName pname iname) ++ "Implementation"
 messageListenerTypeName Client pname iname = mkName $ capitalize (haskifyInterfaceName pname iname) ++ "Listener"
+
+messageListenerMessageName :: ServerClient -> ProtocolName -> InterfaceName -> MessageName -> String
+messageListenerMessageName Server = requestHaskName
+messageListenerMessageName Client = eventHaskName
 
 messageListenerWrapperName :: ServerClient -> InterfaceName -> MessageName -> Name
 messageListenerWrapperName Client iname mname = mkName $ iname ++ "_" ++ mname ++ "_listener_wrapper"
