@@ -118,13 +118,14 @@ The program that generates these protocol header files is called a _scanner_, an
 For haskell-wayland, you can find the equivalent in `Graphics.Wayland.Scanner`.
 Its purpose is to bind to the C wayland interface and marshall all values.
 
-To have haskell-wayland generate a haskell API to other such XML files (the `wayland.xml` is always generated), you'll want to copy what I did in `Graphics.Wayland.Internal.SpliceClient`, `Graphics.Wayland.Internal.SpliceClientInternal` and `Graphics.Wayland.Internal.SpliceClientTypes` (but this might change to fix what symbols that are exposed to the user).
-Only the first two are to be exported to the user (see `Graphics.Wayland.Client` and notice that `Graphics.Wayland.Internal.SpliceClientInternal` is absent).
+To have haskell-wayland generate a haskell API to other such XML files (the `wayland.xml` is always generated), you'll want to copy what I did in `Graphics.Wayland.Internal.SpliceClient`, `Graphics.Wayland.Internal.SpliceClientInternal` and `Graphics.Wayland.Internal.SpliceClientTypes`.
+The modules `Graphics.Wayland.Internal.SpliceClient` and `Graphics.Wayland.Internal.SpliceClientTypes` should be wholly exposed to the user.
+(See `Graphics.Wayland.Client` and notice that `Graphics.Wayland.Internal.SpliceClientInternal` is absent.)
 (Ditto for the Server-side.)
 
 ## Value marshalling ##
 
-Wherever possible, all C values are marshalled to Haskell equivalents.
+Wherever possible, C values are marshalled to Haskell equivalents.
 For the protocol API, this is done by `Graphics.Wayland.Scanner.Marshall`, and for the fixed api manually (but that's mostly trivial).
 
 The exceptions to this are e.g. the methods that give you access to the memory contained by a buffer (which as of writing I haven't implemented yet).
@@ -148,7 +149,6 @@ Try using [wayland-tracker](https://github.com/01org/wayland-tracker) if your co
 ## TODO ##
 
 - prettify binding to wl_registry.bind (ie make more type-safe, add haskell documentation, etc)
-- fix exposed symbols
 - some kind of fancy FRP library binding?
 - write documentation strings from .protocol files into haddock???
 - allow easy building of other .protocol files into haskell bindings
