@@ -35,6 +35,7 @@ import Graphics.Wayland.Scanner.Names
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner.Types
 import Graphics.Wayland.Internal.Util hiding (Client)
+import Graphics.Wayland.Internal.Version(ProtocolVersion(..))
 import qualified Graphics.Wayland.Internal.Util as Util (Client)
 
 
@@ -55,8 +56,8 @@ export name = tell [name]
 
 -- | Wayland data types - exported in the Internal.{Client,Server}Types modules
 generateDataTypes :: ProtocolSpec -> Q [Dec]
-generateDataTypes ps = sequence $ map generateInterface (protocolInterfaces ps) where
-  generateInterface :: Interface -> Q Dec
+generateDataTypes ps = liftM concat $ sequence $ map generateInterface (protocolInterfaces ps) where
+  generateInterface :: Interface -> Q [Dec]
   generateInterface iface = do
     let iname = interfaceName iface
         pname = protocolName ps
@@ -64,7 +65,12 @@ generateDataTypes ps = sequence $ map generateInterface (protocolInterfaces ps) 
     constructorType <- [t|$(conT ''Ptr) $(conT $ mkName qname)|]
     typeDec <- newtypeD (return []) (mkName qname) [] (normalC (mkName qname) [return (NotStrict, constructorType)]) [mkName "Show", mkName "Eq"]
 
-    return typeDec
+    versionInstance <- [d|
+      instance ProtocolVersion $(conT $ mkName qname) where
+        protocolVersion _ = $(litE $ IntegerL $ fromIntegral $ interfaceVersion iface)
+      |]
+
+    return $ typeDec : versionInstance
 
 -- | The wayland registry allows one to construct global objects.
 --   Its API is in wayland.xml, but that API is type-unsafe, so we construct the
