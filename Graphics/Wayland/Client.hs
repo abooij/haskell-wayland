@@ -1,9 +1,11 @@
 module Graphics.Wayland.Client (
-  module Graphics.Wayland.Internal.Client,  -- this will need to be removed when the lib is at a more complete state
+  -- Expose built-in wayland functions
+  module Graphics.Wayland.Internal.Client,
+  module Graphics.Wayland.Internal.Cursor,
+  module Graphics.Wayland.Internal.EGL,
+  -- Expose scanned protocol
   module Graphics.Wayland.Internal.SpliceClient,
   module Graphics.Wayland.Internal.SpliceClientTypes,
-  module Graphics.Wayland.Internal.Cursor,
-  module Graphics.Wayland.Internal.EGL
   ) where
 
 import Graphics.Wayland.Internal.Client

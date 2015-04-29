@@ -1,11 +1,13 @@
 module Graphics.Wayland.Server (
-  module Graphics.Wayland.Internal.Server,  -- this will need to be removed when the lib is at a more complete state
+  -- Expose built-in wayland functions
+  module Graphics.Wayland.Internal.Server,
+  Client(..),
+  -- Expose scanned protocol
   module Graphics.Wayland.Internal.SpliceServer,
   module Graphics.Wayland.Internal.SpliceServerTypes,
-  Client(..)
   ) where
 
 import Graphics.Wayland.Internal.Server
 import Graphics.Wayland.Internal.SpliceServer
 import Graphics.Wayland.Internal.SpliceServerTypes
-import Graphics.Wayland.Internal.Util
+import Graphics.Wayland.Internal.Util (Client(..))
