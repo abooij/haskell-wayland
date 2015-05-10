@@ -35,7 +35,6 @@ import Graphics.Wayland.Scanner.Names
 import Graphics.Wayland.Scanner.Protocol
 import Graphics.Wayland.Scanner.Types
 import Graphics.Wayland.Internal.Util hiding (Client)
-import Graphics.Wayland.Internal.Version(ProtocolVersion(..))
 import qualified Graphics.Wayland.Internal.Util as Util (Client)
 
 
