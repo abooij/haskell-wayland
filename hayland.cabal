@@ -56,7 +56,7 @@ library
   default-language:    Haskell2010
   cc-options: -fPIC
   -- ghc-options: -ddump-splices
-  extra-libraries:
+  pkgconfig-depends:
     wayland-client,
     wayland-cursor,
     wayland-egl,
