@@ -50,12 +50,13 @@ library
     Graphics.Wayland.Scanner.Protocol,
     Graphics.Wayland.Scanner.Types
   build-depends:       base >=4.7 && <4.9, xml >= 1.3 && < 1.4, process >= 1.1 && < 2, template-haskell > 2 && < 3, data-flags <0.1, time <1.6, transformers < 0.5
+  build-tools: c2hs >= 0.15, pkg-config
   default-extensions:  ForeignFunctionInterface
   -- hs-source-dirs:
   default-language:    Haskell2010
   cc-options: -fPIC
   -- ghc-options: -ddump-splices
-  extra-libraries:
+  pkgconfig-depends:
     wayland-client,
     wayland-cursor,
     wayland-egl,
