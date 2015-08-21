@@ -221,7 +221,7 @@ generateMethods ps sc = liftM concat $ sequence $ map generateInterface $ filter
                return (cdec : declist)
              Client -> do
                -- See tree of possibilities above
-               let numNewIds = sum $ map (boolToInt . isNewId) $ messageArguments msg
+               let numNewIds = sum $ map (fromEnum . isNewId) $ messageArguments msg
                    argsWithoutNewId = filter (\arg -> not $ isNewId arg) (messageArguments msg)
                    returnArgument = head $ filter (\arg -> isNewId arg) (messageArguments msg)
                    returnName = let (_, NewIdArg _ theName, _) = returnArgument
@@ -591,7 +591,3 @@ isNewId :: Argument -> Bool
 isNewId arg = case arg of
                    (_, NewIdArg _ _, _) -> True
                    _                  -> False
-
-boolToInt :: Bool -> Int
-boolToInt True = 1
-boolToInt False = 0
