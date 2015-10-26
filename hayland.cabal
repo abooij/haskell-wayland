@@ -6,8 +6,8 @@ version:             0.1.0.1
 synopsis:            Haskell bindings for the C Wayland library.
 description:         This package contains bindings to the Wayland library, which is used to interface display devices, drawable clients, and window managers.
                      .
-                     Wayland exposes a "fixed" set of functions, and additionally generates a part of its API from a "protocol" file.
-                     This package locates that protocol file using pkg-config.
+                     Wayland exposes a fixed set of functions, and additionally generates a (large) part of its API from a _protocol_ file using Template Haskell.
+                     This package locates that protocol file using @pkg-config@.
                      .
                      If you want to interface with other protocols (such as Weston's), refer to the readme for instructions.
 license:             MIT
